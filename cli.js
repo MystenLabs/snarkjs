@@ -82,11 +82,18 @@ const commands = [
         action: powersOfTauChallengeContribute
     },
     {
-        cmd: "powersoftau import response <powersoftau_old.ptau> <response> <<powersoftau_new.ptau>",
+        cmd: "powersoftau import response <powersoftau_old.ptau> <response> <powersoftau_new.ptau>",
         description: "import a response to a ptau file",
         alias: ["ptir"],
         options: "-verbose|v -nopoints -nocheck -name|n",
         action: powersOfTauImport
+    },
+    {
+        cmd: "powersoftau import response_no_origin <curve> <power> <response> <powersoftau_new.ptau>",
+        description: "import a response as a ptau file",
+        alias: ["ptirno"],
+        options: "-verbose|v -nopoints -nocheck -name|n",
+        action: powersOfTauImportNoOrigin
     },
     {
         cmd: "powersoftau beacon <old_powersoftau.ptau> <new_powersoftau.ptau> <beaconHash(Hex)> <numIterationsExp>",
@@ -775,6 +782,49 @@ async function powersOfTauImport(params, options) {
     if (!doCheck) return;
 
     // TODO Verify
+}
+
+/**
+ * This is to import multiple contributions as a whole from the community ppot 
+ * on top of the initial ptau file. Mostly the same as function powersOfTauImport
+ * except that we don't need the old ptau file name in cli pamameters. 
+ * 
+ * Note that the resulting new ptau file won't pass powersOfTauVerify because 
+ * multiple contributions are imported as a whole but the public key is not available. 
+ * To verify the new ptau file, however, we can simply do a bellman export and compare it 
+ * with the original challenge file.
+ *
+ * @param {String[]} params - cli parameters
+ * @param {Object} options - cli options
+ * @param {Boolean|null} options.nopoints - write imported ptau points into the new ptau file if true, otherwise only write contributions
+ * @param {Boolean|null} options.verbose - print debug logs if true
+ */
+async function powersOfTauImportNoOrigin(params, options) {
+    let curveName;
+    let power;
+    let response;
+    let newPtauName;
+    let importPoints = true;
+
+    curveName = params[0];
+
+    power = parseInt(params[1]);
+    if ((power<1) || (power>28) || isNaN(power)) {
+        throw new Error("Power must be between 1 and 28");
+    }
+
+    response = params[2];
+    newPtauName = params[3];
+
+    if (options.nopoints) importPoints = false;
+
+    if (options.verbose) Logger.setLogLevel("DEBUG");
+
+    const curve = await curves.getCurveFromName(curveName);
+
+    const res = await powersOfTau.importResponseNoOrigin(curve, power, response, newPtauName, importPoints, logger);
+
+    if (res) return res;
 }
 
 async function powersOfTauVerify(params, options) {

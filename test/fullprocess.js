@@ -57,6 +57,10 @@ describe("Full process", function ()  {
         await snarkjs.powersOfTau.importResponse(ptau_1, ptau_response2, ptau_2, "C2", true);
     });
 
+    it ("powersoftau import response_no_origin", async () => {
+        await snarkjs.powersOfTau.importResponseNoOrigin(ptau_1, ptau_response2, ptau_2, "C2", true);
+    });
+    
     it ("powersoftau beacon", async () => {
         await snarkjs.powersOfTau.beacon(ptau_2, ptau_beacon, "B3", "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20", 10);
     });
