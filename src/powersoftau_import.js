@@ -120,7 +120,11 @@ async function importResponseCommon(curve, power, contributions, contributionFil
         currentContribution.nextChallenge = noHash;
     }
 
-    contributions.push(currentContribution);
+    if (contributions) {
+        contributions.push(currentContribution);
+    } else {
+        contributions = [currentContribution];
+    }
 
     await utils.writeContributions(fdNew, curve, contributions);
 
@@ -274,7 +278,7 @@ async function importResponseCommon(curve, power, contributions, contributionFil
     }
 }
 
-export default async function importResponse(oldPtauFilename, contributionFilename, newPTauFilename, name, importPoints, logger) {
+export async function importResponse(oldPtauFilename, contributionFilename, newPTauFilename, name, importPoints, logger) {
     const {fd: fdOld, sections} = await binFileUtils.readBinFile(oldPtauFilename, "ptau", 1);
     const {curve, power} = await utils.readPTauHeader(fdOld, sections);
     const contributions = await utils.readContributions(fdOld, curve, sections);
@@ -303,6 +307,6 @@ export default async function importResponse(oldPtauFilename, contributionFilena
  * @param {Boolean} importPoints - write imported ptau points into the new ptau file if true, otherwise only write contributions
  * @param {Object|null} logger - logplease logger for js (e.g., logger.info() for info logs and logger.debug() for debug logs)
  */
-export async function importResponseNoOrigin(curve, power, contributionFilename, newPTauFilename, name, importPoints, logger) {
-    await importResponseCommon(curve, power, null, contributionFilename, newPTauFilename, name, importPoints, logger)
+export async function importResponseNoOrigin(curve, power, contributionFilename, newPTauFilename, importPoints, logger) {
+    await importResponseCommon(curve, power, null, contributionFilename, newPTauFilename, null, importPoints, logger)
 }
