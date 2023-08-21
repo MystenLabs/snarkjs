@@ -23,16 +23,12 @@ import * as utils from "./powersoftau_utils.js";
 import * as binFileUtils from "@iden3/binfileutils";
 import * as misc from "./misc.js";
 
-export default async function importResponse(oldPtauFilename, contributionFilename, newPTauFilename, name, importPoints, logger) {
-
+async function importResponseCommon(curve, power, contributions, contributionFilename, newPTauFilename, name, importPoints, logger) {
     await Blake2b.ready();
 
     const noHash = new Uint8Array(64);
     for (let i=0; i<64; i++) noHash[i] = 0xFF;
 
-    const {fd: fdOld, sections} = await binFileUtils.readBinFile(oldPtauFilename, "ptau", 1);
-    const {curve, power} = await utils.readPTauHeader(fdOld, sections);
-    const contributions = await utils.readContributions(fdOld, curve, sections);
     const currentContribution = {};
 
     if (name) currentContribution.name = name;
@@ -54,26 +50,30 @@ export default async function importResponse(oldPtauFilename, contributionFilena
         sG1*6 + sG2*3)
         throw new Error("Size of the contribution is invalid");
 
-    let lastChallengeHash;
-
-    if (contributions.length>0) {
-        lastChallengeHash = contributions[contributions.length-1].nextChallenge;
-    } else {
-        lastChallengeHash = utils.calculateFirstChallengeHash(curve, power, logger);
-    }
 
     const fdNew = await binFileUtils.createBinFile(newPTauFilename, "ptau", 1, importPoints ? 7: 2);
     await utils.writePTauHeader(fdNew, curve, power);
 
     const contributionPreviousHash = await fdResponse.read(64);
 
-    if (misc.hashIsEqual(noHash,lastChallengeHash)) {
-        lastChallengeHash = contributionPreviousHash;
-        contributions[contributions.length-1].nextChallenge = lastChallengeHash;
-    }
+    // If contributions is not null, we verify the previous contribution hash
+    if (contributions) {
+        let lastChallengeHash;
 
-    if(!misc.hashIsEqual(contributionPreviousHash,lastChallengeHash))
-        throw new Error("Wrong contribution. this contribution is not based on the previus hash");
+        if (contributions.length > 0) {
+            lastChallengeHash = contributions[contributions.length - 1].nextChallenge;
+        } else {
+            lastChallengeHash = utils.calculateFirstChallengeHash(curve, power, logger);
+        }
+
+        if (misc.hashIsEqual(noHash,lastChallengeHash)) {
+            lastChallengeHash = contributionPreviousHash;
+            contributions[contributions.length-1].nextChallenge = lastChallengeHash;
+        }
+
+        if(!misc.hashIsEqual(contributionPreviousHash,lastChallengeHash))
+            throw new Error("Wrong contribution. this contribution is not based on the previus hash");
+    }
 
     const hasherResponse = new Blake2b(64);
     hasherResponse.update(contributionPreviousHash);
@@ -120,16 +120,31 @@ export default async function importResponse(oldPtauFilename, contributionFilena
         currentContribution.nextChallenge = noHash;
     }
 
-    contributions.push(currentContribution);
+    if (contributions) {
+        contributions.push(currentContribution);
+    } else {
+        contributions = [currentContribution];
+    }
 
     await utils.writeContributions(fdNew, curve, contributions);
 
     await fdResponse.close();
     await fdNew.close();
-    await fdOld.close();
 
     return currentContribution.nextChallenge;
 
+    /**
+     * This is to import each section in ptau file.
+     * Exactly the same as that in src/powersoftau_import.js.
+     *
+     * @param {Object} fdFrom - Memfile object (from fastfile) for the response to be imported
+     * @param {Object} fdTo - Memfile object (from fastfile) for the new ptau file
+     * @param {String} groupName - group name (i.e., G1 or G2)
+     * @param {Number} sectionId - section number in ptau file
+     * @param {Number} nPoints - number of points in the section
+     * @param {Number[]} singularPointIndexes - indexes of ptaus to be returned (i.e., [1] for TauG1 and TauG2; [0] for AlphaG1, BetaG1, and BetaG2)
+     * @param {String} sectionName - type of powers of tau (i.e., TauG1, TauG2, AlphaTauG1, BetaTauG1, or BetaG2)
+     */
     async function processSection(fdFrom, fdTo, groupName, sectionId, nPoints, singularPointIndexes, sectionName) {
         if (importPoints) {
             return await processSectionImportPoints(fdFrom, fdTo, groupName, sectionId, nPoints, singularPointIndexes, sectionName);
@@ -138,6 +153,18 @@ export default async function importResponse(oldPtauFilename, contributionFilena
         }
     }
 
+    /**
+     * This is to import each section in ptau file while writing the points to the new ptau file.
+     * Exactly the same as that in src/powersoftau_import.js.
+     *
+     * @param {Object} fdFrom - Memfile object (from fastfile) for the response to be imported
+     * @param {Object} fdTo - Memfile object (from fastfile) for the new ptau file
+     * @param {String} groupName - group name (i.e., G1 or G2)
+     * @param {Number} sectionId - section number in ptau file
+     * @param {Number} nPoints - number of points in the section
+     * @param {Number[]} singularPointIndexes - indexes of ptaus to be returned (i.e., [1] for TauG1 and TauG2; [0] for AlphaG1, BetaG1, and BetaG2)
+     * @param {String} sectionName - type of powers of tau (i.e., TauG1, TauG2, AlphaTauG1, BetaTauG1, or BetaG2)
+     */
     async function processSectionImportPoints(fdFrom, fdTo, groupName, sectionId, nPoints, singularPointIndexes, sectionName) {
 
         const G = curve[groupName];
@@ -175,7 +202,18 @@ export default async function importResponse(oldPtauFilename, contributionFilena
         return singularPoints;
     }
 
-
+    /**
+     * This is to import each section in ptau file without writing the points to the new ptau file.
+     * Exactly the same as that in src/powersoftau_import.js.
+     *
+     * @param {Object} fdFrom - Memfile object (from fastfile) for the response to be imported
+     * @param {Object} fdTo - Memfile object (from fastfile) for the new ptau file
+     * @param {String} groupName - group name (i.e., G1 or G2)
+     * @param {Number} sectionId - section number in ptau file
+     * @param {Number} nPoints - number of points in the section
+     * @param {Number[]} singularPointIndexes - indexes of ptaus to be returned (i.e., [1] for TauG1 and TauG2; [0] for AlphaG1, BetaG1, and BetaG2)
+     * @param {String} sectionName - type of powers of tau (i.e., TauG1, TauG2, AlphaTauG1, BetaTauG1, or BetaG2)
+     */
     async function processSectionNoImportPoints(fdFrom, fdTo, groupName, sectionId, nPoints, singularPointIndexes, sectionName) {
 
         const G = curve[groupName];
@@ -204,7 +242,18 @@ export default async function importResponse(oldPtauFilename, contributionFilena
         return singularPoints;
     }
 
-
+    /**
+     * This is to compute the hash for the next challenge.
+     * Exactly the same as that in src/powersoftau_import.js.
+     *
+     * @param {Object} nextChallengeHasher - Blake2b hasher for the next challenge (e.g., hasher.update() to append the hash input, hasher.digest() to compute the hash)
+     * @param {Object} fdTo - Memfile object (from fastfile) for the new ptau file
+     * @param {String} groupName - group name (i.e., G1 or G2)
+     * @param {Number} sectionId - section number in ptau file
+     * @param {number} nPoints - number of points in the section
+     * @param {String} sectionName - type of powers of tau (i.e., TauG1, TauG2, AlphaTauG1, BetaTauG1, or BetaG2)
+     * @param {Object|null} logger - logplease logger for js (e.g., logger.info() for info logs and logger.debug() for debug logs)
+     */
     async function hashSection(nextChallengeHasher, fdTo, groupName, sectionId, nPoints, sectionName, logger) {
 
         const G = curve[groupName];
@@ -227,6 +276,37 @@ export default async function importResponse(oldPtauFilename, contributionFilena
 
         fdTo.pos = oldPos;
     }
-
 }
 
+export async function importResponse(oldPtauFilename, contributionFilename, newPTauFilename, name, importPoints, logger) {
+    const {fd: fdOld, sections} = await binFileUtils.readBinFile(oldPtauFilename, "ptau", 1);
+    const {curve, power} = await utils.readPTauHeader(fdOld, sections);
+    const contributions = await utils.readContributions(fdOld, curve, sections);
+
+    await importResponseCommon(curve, power, contributions, contributionFilename, newPTauFilename, name, importPoints, logger)
+
+    await fdOld.close();
+}
+
+/**
+ * This is to import multiple contributions as a whole from the community ppot
+ * on top of the initial ptau file. Mostly the same as src/powersoftau_import.js
+ * except that we don't need oldPtauName and don't verify if contributionPreviousHash
+ * in community ppot challenge file matches lastChallengeHash in the ptau file.
+ *
+ * Note that the powersoftau_verify won't succeed because multiple contributions
+ * are imported as a whole but the public key is not available. To verify the
+ * new ptau file, however, we can simply do a bellman export and compare it
+ * with the original challenge file.
+ *
+ * @param {Object} curve - curve engine built from ffjavascript (e.g., buildBn128() for bn128)
+ * @param {Number} power - circuit size exponent (support circuit size of at most 2^power), should be within range [1, 28]
+ * @param {String} contributionFilename - name of the imported response file
+ * @param {String} newPTauFilename - name of the new ptau file
+ * @param {(String|null)} name - name of the contribution
+ * @param {Boolean} importPoints - write imported ptau points into the new ptau file if true, otherwise only write contributions
+ * @param {Object|null} logger - logplease logger for js (e.g., logger.info() for info logs and logger.debug() for debug logs)
+ */
+export async function importResponseNoOrigin(curve, power, contributionFilename, newPTauFilename, importPoints, logger) {
+    await importResponseCommon(curve, power, null, contributionFilename, newPTauFilename, null, importPoints, logger)
+}
