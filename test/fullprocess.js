@@ -10,7 +10,6 @@ describe("Full process", function ()  {
     const ptau_0 = {type: "mem"};
     const ptau_1 = {type: "mem"};
     const ptau_2 = {type: "mem"};
-    const ptau_3 = {type: "mem"};
     const ptau_beacon = {type: "mem"};
     const ptau_final = {type: "mem"};
     const ptau_challenge2 = {type: "mem"};
