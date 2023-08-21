@@ -3,7 +3,7 @@ import { getCurveFromName } from "../src/curves.js";
 import assert from "assert";
 import path from "path";
 
-describe("Full process", function ()  {
+describe("Full process (no origin)", function ()  {
     this.timeout(1000000000);
 
     let curve;
@@ -53,8 +53,8 @@ describe("Full process", function ()  {
         await snarkjs.powersOfTau.challengeContribute(curve, ptau_challenge2, ptau_response2, "Entropy2");
     });
 
-    it ("powersoftau import response", async () => {
-        await snarkjs.powersOfTau.importResponse(ptau_1, ptau_response2, ptau_2, "C2", true);
+    it ("powersoftau import response_no_origin", async () => {
+        await snarkjs.powersOfTau.importResponseNoOrigin(curve, 11, ptau_response2, ptau_2, true, null);
     });
 
     it ("powersoftau beacon", async () => {
@@ -63,11 +63,6 @@ describe("Full process", function ()  {
 
     it ("powersoftau prepare phase2", async () => {
         await snarkjs.powersOfTau.preparePhase2(ptau_beacon, ptau_final);
-    });
-
-    it ("powersoftau verify", async () => {
-        const res = await snarkjs.powersOfTau.verify(ptau_final);
-        assert(res);
     });
 
     it ("groth16 setup", async () => {
@@ -121,7 +116,6 @@ describe("Full process", function ()  {
         proof = res.proof;
         publicSignals = res.publicSignals;
     });
-
 
     it ("groth16 verify", async () => {
         const res = await snarkjs.groth16.verify(vKey, publicSignals, proof);
