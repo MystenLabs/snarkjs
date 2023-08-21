@@ -126,13 +126,22 @@ const commands = [
         options: "-verbose|v",
         action: powersOfTauTruncate
     },
-    {
-        cmd: "powersoftau verify <powersoftau.ptau>",
-        description: "verifies a powers of tau file",
-        alias: ["ptv"],
-        options: "-verbose|v",
-        action: powersOfTauVerify
-    },
+
+    // Note that the powersoftau_verify won't succeed after importResponseNoOrigin
+    // because multiple contributions are imported as a whole but the public key
+    // is not available, so it is disabled here.
+    //
+    // To verify the new ptau file, however, we can simply do
+    // a bellman export and compare it with the original challenge file.
+    //
+    // {
+    //     cmd: "powersoftau verify <powersoftau.ptau>",
+    //     description: "verifies a powers of tau file",
+    //     alias: ["ptv"],
+    //     options: "-verbose|v",
+    //     action: powersOfTauVerify
+    // },
+
     {
         cmd: "powersoftau export json <powersoftau_0000.ptau> <powersoftau_0000.json>",
         description: "Exports a power of tau file to a JSON",
