@@ -229,6 +229,34 @@ const commands = [
         action: zkeyVerifyFromInit
     },
     {
+        cmd: "zkey extract <circuit.zkey> <circuit.v2params>",
+        description: "Extract a partial v2params file (sections 1, 2, 8, 9, 10) from a full zkey",
+        alias: ["zkex"],
+        options: "-verbose|v",
+        action: zkeyExtract
+    },
+    {
+        cmd: "zkey contribute v2params <circuit_old.v2params> <circuit_new.v2params>",
+        description: "creates a new contribution operating on a v2params (partial zkey) file",
+        alias: ["zkcv2"],
+        options: "-verbose|v -entropy|e -name|n",
+        action: zkeyContributeV2Params
+    },
+    {
+        cmd: "zkey verify v2params <circuit_before.v2params> <circuit_after.v2params> <powersoftau.ptau>",
+        description: "Verify a single Phase 2 contribution between two v2params files using ptau",
+        alias: ["zkvv2"],
+        options: "-verbose|v",
+        action: zkeyVerifyV2Params
+    },
+    {
+        cmd: "zkey assemble <base.zkey> <circuit.v2params> <circuit_out.zkey>",
+        description: "Assemble a full zkey by combining a base zkey (sections 3-7) with v2params (sections 1, 2, 8, 9, 10)",
+        alias: ["zkas"],
+        options: "-verbose|v",
+        action: zkeyAssemble
+    },
+    {
         cmd: "zkey export verificationkey [circuit_final.zkey] [verification_key.json]",
         description: "Exports a verification key",
         alias: ["zkev"],
@@ -1052,6 +1080,44 @@ async function zkeyContribute(params, options) {
     // Discard contribuionHash
     await zkey.contribute(zkeyOldName, zkeyNewName, options.name, options.entropy, logger);
 
+    return 0;
+}
+
+// zkey extract <circuit.zkey> <circuit.v2params>
+async function zkeyExtract(params, options) {
+    const zkeyName = params[0];
+    const v2paramsName = params[1];
+    if (options.verbose) Logger.setLogLevel("DEBUG");
+    await zkey.extract(zkeyName, v2paramsName, logger);
+    return 0;
+}
+
+// zkey contribute v2params <circuit_old.v2params> <circuit_new.v2params>
+async function zkeyContributeV2Params(params, options) {
+    const oldName = params[0];
+    const newName = params[1];
+    if (options.verbose) Logger.setLogLevel("DEBUG");
+    await zkey.contributeV2Params(oldName, newName, options.name, options.entropy, logger);
+    return 0;
+}
+
+// zkey verify v2params <circuit_before.v2params> <circuit_after.v2params> <powersoftau.ptau>
+async function zkeyVerifyV2Params(params, options) {
+    const beforeName = params[0];
+    const afterName = params[1];
+    const ptauName = params[2];
+    if (options.verbose) Logger.setLogLevel("DEBUG");
+    const ok = await zkey.verifyV2Params(beforeName, afterName, ptauName, logger);
+    return ok === true ? 0 : 1;
+}
+
+// zkey assemble <base.zkey> <circuit.v2params> <circuit_out.zkey>
+async function zkeyAssemble(params, options) {
+    const baseName = params[0];
+    const v2paramsName = params[1];
+    const outName = params[2];
+    if (options.verbose) Logger.setLogLevel("DEBUG");
+    await zkey.assemble(baseName, v2paramsName, outName, logger);
     return 0;
 }
 

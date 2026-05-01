@@ -289,7 +289,7 @@ function toPartialHash(hash){
     return res;
 }
 
-async function sameRatio$2(curve, g1s, g1sx, g2s, g2sx) {
+async function sameRatio$3(curve, g1s, g1sx, g2s, g2sx) {
     if (curve.G1.isZero(g1s)) return false;
     if (curve.G1.isZero(g1sx)) return false;
     if (curve.G2.isZero(g2s)) return false;
@@ -1617,7 +1617,7 @@ async function importResponse(oldPtauFilename, contributionFilename, newPTauFile
     You should have received a copy of the GNU General Public License
     along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
 */
-const sameRatio$1 = sameRatio$2;
+const sameRatio$2 = sameRatio$3;
 
 async function verifyContribution(curve, cur, prev, logger) {
     let sr;
@@ -1668,49 +1668,49 @@ async function verifyContribution(curve, cur, prev, logger) {
     cur.key.alpha.g2_sp = curve.G2.toAffine(getG2sp(curve, 1, prev.nextChallenge, cur.key.alpha.g1_s, cur.key.alpha.g1_sx));
     cur.key.beta.g2_sp = curve.G2.toAffine(getG2sp(curve, 2, prev.nextChallenge, cur.key.beta.g1_s, cur.key.beta.g1_sx));
 
-    sr = await sameRatio$1(curve, cur.key.tau.g1_s, cur.key.tau.g1_sx, cur.key.tau.g2_sp, cur.key.tau.g2_spx);
+    sr = await sameRatio$2(curve, cur.key.tau.g1_s, cur.key.tau.g1_sx, cur.key.tau.g2_sp, cur.key.tau.g2_spx);
     if (sr !== true) {
         if (logger) logger.error("INVALID key (tau) in challenge #"+cur.id);
         return false;
     }
 
-    sr = await sameRatio$1(curve, cur.key.alpha.g1_s, cur.key.alpha.g1_sx, cur.key.alpha.g2_sp, cur.key.alpha.g2_spx);
+    sr = await sameRatio$2(curve, cur.key.alpha.g1_s, cur.key.alpha.g1_sx, cur.key.alpha.g2_sp, cur.key.alpha.g2_spx);
     if (sr !== true) {
         if (logger) logger.error("INVALID key (alpha) in challenge #"+cur.id);
         return false;
     }
 
-    sr = await sameRatio$1(curve, cur.key.beta.g1_s, cur.key.beta.g1_sx, cur.key.beta.g2_sp, cur.key.beta.g2_spx);
+    sr = await sameRatio$2(curve, cur.key.beta.g1_s, cur.key.beta.g1_sx, cur.key.beta.g2_sp, cur.key.beta.g2_spx);
     if (sr !== true) {
         if (logger) logger.error("INVALID key (beta) in challenge #"+cur.id);
         return false;
     }
 
-    sr = await sameRatio$1(curve, prev.tauG1, cur.tauG1, cur.key.tau.g2_sp, cur.key.tau.g2_spx);
+    sr = await sameRatio$2(curve, prev.tauG1, cur.tauG1, cur.key.tau.g2_sp, cur.key.tau.g2_spx);
     if (sr !== true) {
         if (logger) logger.error("INVALID tau*G1. challenge #"+cur.id+" It does not follow the previous contribution");
         return false;
     }
 
-    sr = await sameRatio$1(curve,  cur.key.tau.g1_s, cur.key.tau.g1_sx, prev.tauG2, cur.tauG2);
+    sr = await sameRatio$2(curve,  cur.key.tau.g1_s, cur.key.tau.g1_sx, prev.tauG2, cur.tauG2);
     if (sr !== true) {
         if (logger) logger.error("INVALID tau*G2. challenge #"+cur.id+" It does not follow the previous contribution");
         return false;
     }
 
-    sr = await sameRatio$1(curve, prev.alphaG1, cur.alphaG1, cur.key.alpha.g2_sp, cur.key.alpha.g2_spx);
+    sr = await sameRatio$2(curve, prev.alphaG1, cur.alphaG1, cur.key.alpha.g2_sp, cur.key.alpha.g2_spx);
     if (sr !== true) {
         if (logger) logger.error("INVALID alpha*G1. challenge #"+cur.id+" It does not follow the previous contribution");
         return false;
     }
 
-    sr = await sameRatio$1(curve, prev.betaG1, cur.betaG1, cur.key.beta.g2_sp, cur.key.beta.g2_spx);
+    sr = await sameRatio$2(curve, prev.betaG1, cur.betaG1, cur.key.beta.g2_sp, cur.key.beta.g2_spx);
     if (sr !== true) {
         if (logger) logger.error("INVALID beta*G1. challenge #"+cur.id+" It does not follow the previous contribution");
         return false;
     }
 
-    sr = await sameRatio$1(curve,  cur.key.beta.g1_s, cur.key.beta.g1_sx, prev.betaG2, cur.betaG2);
+    sr = await sameRatio$2(curve,  cur.key.beta.g1_s, cur.key.beta.g1_sx, prev.betaG2, cur.betaG2);
     if (sr !== true) {
         if (logger) logger.error("INVALID beta*G2. challenge #"+cur.id+"It does not follow the previous contribution");
         return false;
@@ -1768,7 +1768,7 @@ async function verify(tauFilename, logger) {
     // Verify Section tau*G1
     if (logger) logger.debug("Verifying powers in tau*G1 section");
     const rTau1 = await processSection(2, "G1", "tauG1", (2 ** power)*2-1, [0, 1], logger);
-    sr = await sameRatio$1(curve, rTau1.R1, rTau1.R2, curve.G2.g, curContr.tauG2);
+    sr = await sameRatio$2(curve, rTau1.R1, rTau1.R2, curve.G2.g, curContr.tauG2);
     if (sr !== true) {
         if (logger) logger.error("tauG1 section. Powers do not match");
         return false;
@@ -1787,7 +1787,7 @@ async function verify(tauFilename, logger) {
     // Verify Section tau*G2
     if (logger) logger.debug("Verifying powers in tau*G2 section");
     const rTau2 = await processSection(3, "G2", "tauG2", 2 ** power, [0, 1],  logger);
-    sr = await sameRatio$1(curve, curve.G1.g, curContr.tauG1, rTau2.R1, rTau2.R2);
+    sr = await sameRatio$2(curve, curve.G1.g, curContr.tauG1, rTau2.R1, rTau2.R2);
     if (sr !== true) {
         if (logger) logger.error("tauG2 section. Powers do not match");
         return false;
@@ -1804,7 +1804,7 @@ async function verify(tauFilename, logger) {
     // Verify Section alpha*tau*G1
     if (logger) logger.debug("Verifying powers in alpha*tau*G1 section");
     const rAlphaTauG1 = await processSection(4, "G1", "alphatauG1", 2 ** power, [0], logger);
-    sr = await sameRatio$1(curve, rAlphaTauG1.R1, rAlphaTauG1.R2, curve.G2.g, curContr.tauG2);
+    sr = await sameRatio$2(curve, rAlphaTauG1.R1, rAlphaTauG1.R2, curve.G2.g, curContr.tauG2);
     if (sr !== true) {
         if (logger) logger.error("alphaTauG1 section. Powers do not match");
         return false;
@@ -1817,7 +1817,7 @@ async function verify(tauFilename, logger) {
     // Verify Section beta*tau*G1
     if (logger) logger.debug("Verifying powers in beta*tau*G1 section");
     const rBetaTauG1 = await processSection(5, "G1", "betatauG1", 2 ** power, [0], logger);
-    sr = await sameRatio$1(curve, rBetaTauG1.R1, rBetaTauG1.R2, curve.G2.g, curContr.tauG2);
+    sr = await sameRatio$2(curve, rBetaTauG1.R1, rBetaTauG1.R2, curve.G2.g, curContr.tauG2);
     if (sr !== true) {
         if (logger) logger.error("betaTauG1 section. Powers do not match");
         return false;
@@ -4565,7 +4565,7 @@ async function phase2importMPCParams(zkeyNameOld, mpcparamsName, zkeyNameNew, na
     You should have received a copy of the GNU General Public License
     along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
 */
-const sameRatio = sameRatio$2;
+const sameRatio$1 = sameRatio$3;
 
 
 
@@ -4600,13 +4600,13 @@ async function phase2verifyFromInit(initFileName, pTauFileName, zkeyFileName, lo
 
         const delta_g2_sp = hashToG2(curve, c.transcript);
 
-        sr = await sameRatio(curve, c.delta.g1_s, c.delta.g1_sx, delta_g2_sp, c.delta.g2_spx);
+        sr = await sameRatio$1(curve, c.delta.g1_s, c.delta.g1_sx, delta_g2_sp, c.delta.g2_spx);
         if (sr !== true) {
             console.log(`INVALID(${i}): public key G1 and G2 do not have the same ration `);
             return false;
         }
 
-        sr = await sameRatio(curve, curDelta, c.deltaAfter, delta_g2_sp, c.delta.g2_spx);
+        sr = await sameRatio$1(curve, curDelta, c.deltaAfter, delta_g2_sp, c.delta.g2_spx);
         if (sr !== true) {
             console.log(`INVALID(${i}): deltaAfter does not fillow the public key `);
             return false;
@@ -4682,7 +4682,7 @@ async function phase2verifyFromInit(initFileName, pTauFileName, zkeyFileName, lo
         if (logger) logger.error("INVALID:  Invalid delta1");
         return false;
     }
-    sr = await sameRatio(curve, curve.G1.g, curDelta, curve.G2.g, zkey.vk_delta_2);
+    sr = await sameRatio$1(curve, curve.G1.g, curDelta, curve.G2.g, zkey.vk_delta_2);
     if (sr !== true) {
         if (logger) logger.error("INVALID:  Invalid delta2");
         return false;
@@ -4802,7 +4802,7 @@ async function phase2verifyFromInit(initFileName, pTauFileName, zkeyFileName, lo
 
         if (nPoints == 0) return true;
 
-        sr = await sameRatio(curve, R1, R2, g2sp, g2spx);
+        sr = await sameRatio$1(curve, R1, R2, g2sp, g2spx);
         if (sr !== true) return false;
 
         return true;
@@ -4881,7 +4881,7 @@ async function phase2verifyFromInit(initFileName, pTauFileName, zkeyFileName, lo
         }
         await binFileUtils__namespace.endReadSection(fd);
 
-        sr = await sameRatio(curve, R1, R2, zkey.vk_delta_2, zkeyInit.vk_delta_2);
+        sr = await sameRatio$1(curve, R1, R2, zkey.vk_delta_2, zkeyInit.vk_delta_2);
         if (sr !== true) return false;
 
 
@@ -5601,6 +5601,530 @@ async function exportSolidityVerifier(zKeyName, templates, logger) {
     let template = templates[verificationKey.protocol];
 
     return ejs__default["default"].render(template, verificationKey);
+}
+
+/*
+    Copyright 2018 0KIMS association.
+
+    This file is part of snarkJS.
+
+    snarkJS is a free software: you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    snarkJS is distributed in the hope that it will be useful, but WITHOUT
+    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
+    License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+async function zkeyExtract$1(zkeyFullName, v2paramsName, logger) {
+    const {fd: fdOld, sections} = await binFileUtils__namespace.readBinFile(zkeyFullName, "zkey", 2);
+    const fdNew = await binFileUtils__namespace.createBinFile(v2paramsName, "zkey", 1, 10);
+
+    // Section 1: protocol id
+    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 1);
+    // Section 2: header (curve, sizes, vk_alpha/beta/gamma/delta)
+    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 2);
+    // Section 8: L points
+    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 8);
+    // Section 9: H points
+    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 9);
+    // Section 10: MPC params (csHash + contribution chain)
+    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 10);
+
+    await fdOld.close();
+    await fdNew.close();
+
+    if (logger) logger.info(`Extracted v2params: ${v2paramsName}`);
+}
+
+/*
+    Copyright 2018 0KIMS association.
+
+    This file is part of snarkJS.
+
+    snarkJS is a free software: you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    snarkJS is distributed in the hope that it will be useful, but WITHOUT
+    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
+    License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+async function zkeyAssemble$1(baseZkeyName, v2paramsName, outZkeyName, logger) {
+    const {fd: fdBase, sections: baseSections} = await binFileUtils__namespace.readBinFile(baseZkeyName, "zkey", 2);
+    const {fd: fdParts, sections: partsSections} = await binFileUtils__namespace.readBinFile(v2paramsName, "zkey", 2);
+    const fdOut = await binFileUtils__namespace.createBinFile(outZkeyName, "zkey", 1, 10);
+
+    // From v2params: section 1 (protocol) and section 2 (header with updated delta)
+    await binFileUtils__namespace.copySection(fdParts, partsSections, fdOut, 1);
+    await binFileUtils__namespace.copySection(fdParts, partsSections, fdOut, 2);
+
+    // From base: sections 3-7 (IC, Coeffs, A, B1, B2) -- frozen since g16s
+    await binFileUtils__namespace.copySection(fdBase, baseSections, fdOut, 3);
+    await binFileUtils__namespace.copySection(fdBase, baseSections, fdOut, 4);
+    await binFileUtils__namespace.copySection(fdBase, baseSections, fdOut, 5);
+    await binFileUtils__namespace.copySection(fdBase, baseSections, fdOut, 6);
+    await binFileUtils__namespace.copySection(fdBase, baseSections, fdOut, 7);
+
+    // From v2params: section 8 (L), section 9 (H), section 10 (MPC params)
+    await binFileUtils__namespace.copySection(fdParts, partsSections, fdOut, 8);
+    await binFileUtils__namespace.copySection(fdParts, partsSections, fdOut, 9);
+    await binFileUtils__namespace.copySection(fdParts, partsSections, fdOut, 10);
+
+    await fdBase.close();
+    await fdParts.close();
+    await fdOut.close();
+
+    if (logger) logger.info(`Assembled zkey: ${outZkeyName}`);
+}
+
+/*
+    Copyright 2018 0KIMS association.
+
+    This file is part of snarkJS.
+
+    snarkJS is a free software: you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    snarkJS is distributed in the hope that it will be useful, but WITHOUT
+    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
+    License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+async function phase2contributeV2Params(v2paramsOld, v2paramsNew, name, entropy, logger) {
+
+    const {fd: fdOld, sections: sections} = await binFileUtils__namespace.readBinFile(v2paramsOld, "zkey", 2);
+    const zkey = await readHeader$1(fdOld, sections);
+    if (zkey.protocol != "groth16") {
+        throw new Error("zkey file is not groth16");
+    }
+
+    const curve = await getCurveFromQ(zkey.q);
+
+    const mpcParams = await readMPCParams(fdOld, curve, sections);
+
+    const fdNew = await binFileUtils__namespace.createBinFile(v2paramsNew, "zkey", 1, 10);
+
+
+    const rng = await getRandomRng(entropy);
+
+    const transcriptHasher = blake2b.blake2b.create({ dkLen: 64 });
+    transcriptHasher.update(mpcParams.csHash);
+    for (let i=0; i<mpcParams.contributions.length; i++) {
+        hashPubKey(transcriptHasher, curve, mpcParams.contributions[i]);
+    }
+
+    const curContribution = {};
+    curContribution.delta = {};
+    curContribution.delta.prvKey = curve.Fr.fromRng(rng);
+    curContribution.delta.g1_s = curve.G1.toAffine(curve.G1.fromRng(rng));
+    curContribution.delta.g1_sx = curve.G1.toAffine(curve.G1.timesFr(curContribution.delta.g1_s, curContribution.delta.prvKey));
+    hashG1(transcriptHasher, curve, curContribution.delta.g1_s);
+    hashG1(transcriptHasher, curve, curContribution.delta.g1_sx);
+    curContribution.transcript = transcriptHasher.digest();
+    curContribution.delta.g2_sp = hashToG2(curve, curContribution.transcript);
+    curContribution.delta.g2_spx = curve.G2.toAffine(curve.G2.timesFr(curContribution.delta.g2_sp, curContribution.delta.prvKey));
+
+    zkey.vk_delta_1 = curve.G1.timesFr(zkey.vk_delta_1, curContribution.delta.prvKey);
+    zkey.vk_delta_2 = curve.G2.timesFr(zkey.vk_delta_2, curContribution.delta.prvKey);
+
+    curContribution.deltaAfter = zkey.vk_delta_1;
+
+    curContribution.type = 0;
+    if (name) curContribution.name = name;
+
+    mpcParams.contributions.push(curContribution);
+
+    await writeHeader(fdNew, zkey);
+
+    // Sections 3-7 (IC, Coeffs, A, B1, B2) are NOT present in a v2params file.
+    // They are not modified by Phase 2 contributions and live only in the full
+    // base zkey on the coordinator side; `zkey assemble` reinjects them later.
+
+    const invDelta = curve.Fr.inv(curContribution.delta.prvKey);
+    await applyKeyToSection(fdOld, sections, fdNew, 8, curve, "G1", invDelta, curve.Fr.e(1), "L Section", logger);
+    await applyKeyToSection(fdOld, sections, fdNew, 9, curve, "G1", invDelta, curve.Fr.e(1), "H Section", logger);
+
+    await writeMPCParams(fdNew, curve, mpcParams);
+
+    await fdOld.close();
+    await fdNew.close();
+
+    const contributionHasher = blake2b.blake2b.create({ dkLen: 64 });
+    hashPubKey(contributionHasher, curve, curContribution);
+
+    const contributionHash = contributionHasher.digest();
+
+    if (logger) logger.info(formatHash(mpcParams.csHash, "Circuit Hash: "));
+    if (logger) logger.info(formatHash(contributionHash, "Contribution Hash: "));
+
+    return contributionHash;
+}
+
+/*
+    Copyright 2018 0KIMS association.
+
+    This file is part of snarkJS.
+
+    snarkJS is a free software: you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    snarkJS is distributed in the hope that it will be useful, but WITHOUT
+    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
+    License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+const sameRatio = sameRatio$3;
+
+async function phase2verifyV2Params(beforeFileName, afterFileName, pTauFileName, logger) {
+    let sr;
+
+    const {fd: fdBefore, sections: sectionsBefore} = await binFileUtils__namespace.readBinFile(beforeFileName, "zkey", 2);
+    const zkeyBefore = await readHeader$1(fdBefore, sectionsBefore, false);
+
+    const {fd: fdAfter, sections: sectionsAfter} = await binFileUtils__namespace.readBinFile(afterFileName, "zkey", 2);
+    const zkeyAfter = await readHeader$1(fdAfter, sectionsAfter, false);
+
+    if (zkeyBefore.protocol != "groth16" || zkeyAfter.protocol != "groth16") {
+        throw new Error("v2params files must be groth16");
+    }
+
+    const curve = await getCurveFromQ(zkeyAfter.q);
+    const sG1 = curve.G1.F.n8 * 2;
+
+    // #4 (kept portion): curve and circuit parameters
+    if (!ffjavascript.Scalar.eq(zkeyBefore.q, zkeyAfter.q) || !ffjavascript.Scalar.eq(zkeyBefore.r, zkeyAfter.r)
+        || zkeyBefore.n8q != zkeyAfter.n8q || zkeyBefore.n8r != zkeyAfter.n8r) {
+        if (logger) logger.error("INVALID: Different curves");
+        return false;
+    }
+    if (zkeyBefore.nVars != zkeyAfter.nVars
+        || zkeyBefore.nPublic != zkeyAfter.nPublic
+        || zkeyBefore.domainSize != zkeyAfter.domainSize) {
+        if (logger) logger.error("INVALID: Different circuit parameters");
+        return false;
+    }
+    if (!curve.G1.eq(zkeyBefore.vk_alpha_1, zkeyAfter.vk_alpha_1)) {
+        if (logger) logger.error("INVALID: vk_alpha_1 changed");
+        return false;
+    }
+    if (!curve.G1.eq(zkeyBefore.vk_beta_1, zkeyAfter.vk_beta_1)) {
+        if (logger) logger.error("INVALID: vk_beta_1 changed");
+        return false;
+    }
+    if (!curve.G2.eq(zkeyBefore.vk_beta_2, zkeyAfter.vk_beta_2)) {
+        if (logger) logger.error("INVALID: vk_beta_2 changed");
+        return false;
+    }
+    if (!curve.G2.eq(zkeyBefore.vk_gamma_2, zkeyAfter.vk_gamma_2)) {
+        if (logger) logger.error("INVALID: vk_gamma_2 changed");
+        return false;
+    }
+
+    // MPC params: csHash + contribution chain
+    const mpcBefore = await readMPCParams(fdBefore, curve, sectionsBefore);
+    const mpcAfter  = await readMPCParams(fdAfter,  curve, sectionsAfter);
+
+    // #4 (kept): csHash equal
+    if (!hashIsEqual(mpcBefore.csHash, mpcAfter.csHash)) {
+        if (logger) logger.error("INVALID: csHash changed");
+        return false;
+    }
+
+    // #1: exactly one new contribution
+    if (mpcAfter.contributions.length !== mpcBefore.contributions.length + 1) {
+        if (logger) logger.error(`INVALID: Expected ${mpcBefore.contributions.length + 1} contributions, got ${mpcAfter.contributions.length}`);
+        return false;
+    }
+
+    // #2: prior contributions unchanged (transcript + deltaAfter sufficient because
+    // transcript commits to all prior pubkey bytes; this is double-checked via
+    // pubkey field equality for defense-in-depth).
+    for (let i = 0; i < mpcBefore.contributions.length; i++) {
+        const cb = mpcBefore.contributions[i];
+        const ca = mpcAfter.contributions[i];
+        if (!hashIsEqual(cb.transcript, ca.transcript)) {
+            if (logger) logger.error(`INVALID: prior contribution #${i+1} transcript mismatch`);
+            return false;
+        }
+        if (!curve.G1.eq(cb.deltaAfter, ca.deltaAfter)) {
+            if (logger) logger.error(`INVALID: prior contribution #${i+1} deltaAfter mismatch`);
+            return false;
+        }
+        if (!curve.G1.eq(cb.delta.g1_s, ca.delta.g1_s)
+            || !curve.G1.eq(cb.delta.g1_sx, ca.delta.g1_sx)
+            || !curve.G2.eq(cb.delta.g2_spx, ca.delta.g2_spx)) {
+            if (logger) logger.error(`INVALID: prior contribution #${i+1} pubkey mismatch`);
+            return false;
+        }
+    }
+
+    // The new contribution: last entry of mpcAfter.contributions
+    const newC = mpcAfter.contributions[mpcAfter.contributions.length - 1];
+
+    // #5: transcript consistency for the new contribution
+    const transcriptHasher = blake2b.blake2b.create({ dkLen: 64 });
+    transcriptHasher.update(mpcAfter.csHash);
+    for (let i = 0; i < mpcBefore.contributions.length; i++) {
+        hashPubKey(transcriptHasher, curve, mpcBefore.contributions[i]);
+    }
+    hashG1(transcriptHasher, curve, newC.delta.g1_s);
+    hashG1(transcriptHasher, curve, newC.delta.g1_sx);
+    if (!hashIsEqual(transcriptHasher.digest(), newC.transcript)) {
+        if (logger) logger.error("INVALID: Inconsistent transcript on new contribution");
+        return false;
+    }
+
+    // #6: Schnorr-style PoK
+    const delta_g2_sp = hashToG2(curve, newC.transcript);
+    sr = await sameRatio(curve, newC.delta.g1_s, newC.delta.g1_sx, delta_g2_sp, newC.delta.g2_spx);
+    if (sr !== true) {
+        if (logger) logger.error("INVALID: pubkey G1/G2 ratio mismatch");
+        return false;
+    }
+
+    // #7: delta chain
+    sr = await sameRatio(curve, zkeyBefore.vk_delta_1, newC.deltaAfter, delta_g2_sp, newC.delta.g2_spx);
+    if (sr !== true) {
+        if (logger) logger.error("INVALID: deltaAfter does not follow the public key");
+        return false;
+    }
+    if (!curve.G1.eq(zkeyAfter.vk_delta_1, newC.deltaAfter)) {
+        if (logger) logger.error("INVALID: header.vk_delta_1 doesn't match new contribution's deltaAfter");
+        return false;
+    }
+    sr = await sameRatio(curve, curve.G1.g, zkeyAfter.vk_delta_1, curve.G2.g, zkeyAfter.vk_delta_2);
+    if (sr !== true) {
+        if (logger) logger.error("INVALID: header delta_2 inconsistent with delta_1");
+        return false;
+    }
+
+    // Beacon-type contributions: also verify deterministic derivation from beacon hex
+    if (newC.type == 1) {
+        const rng = await rngFromBeaconParams(newC.beaconHash, newC.numIterationsExp);
+        const expected_prvKey = curve.Fr.fromRng(rng);
+        const expected_g1_s   = curve.G1.toAffine(curve.G1.fromRng(rng));
+        const expected_g1_sx  = curve.G1.toAffine(curve.G1.timesFr(expected_g1_s, expected_prvKey));
+        if (!curve.G1.eq(expected_g1_s, newC.delta.g1_s)) {
+            if (logger) logger.error("INVALID beacon: g1_s doesn't match derivation");
+            return false;
+        }
+        if (!curve.G1.eq(expected_g1_sx, newC.delta.g1_sx)) {
+            if (logger) logger.error("INVALID beacon: g1_sx doesn't match derivation");
+            return false;
+        }
+    }
+
+    // #3: section sizes
+    const expectedLSize = sG1 * (zkeyAfter.nVars - zkeyAfter.nPublic - 1);
+    const expectedHSize = sG1 * zkeyAfter.domainSize;
+    if (sectionsBefore[8][0].size != expectedLSize || sectionsAfter[8][0].size != expectedLSize) {
+        if (logger) logger.error("INVALID: L section size unexpected");
+        return false;
+    }
+    if (sectionsBefore[9][0].size != expectedHSize || sectionsAfter[9][0].size != expectedHSize) {
+        if (logger) logger.error("INVALID: H section size unexpected");
+        return false;
+    }
+
+    // #8a: L ratio
+    sr = await sectionHasSameRatio("G1", fdBefore, sectionsBefore, fdAfter, sectionsAfter, 8, zkeyAfter.vk_delta_2, zkeyBefore.vk_delta_2, "L section");
+    if (sr !== true) {
+        if (logger) logger.error("INVALID: L section ratio failed");
+        return false;
+    }
+
+    // #8b: H ratio against ptau (snarkjs-style; uses τⁿ-1 structure from ptau)
+    sr = await sameRatioH();
+    if (sr !== true) {
+        if (logger) logger.error("INVALID: H section ratio failed");
+        return false;
+    }
+
+    if (logger) logger.info(formatHash(mpcAfter.csHash, "Circuit Hash: "));
+
+    await fdBefore.close();
+    await fdAfter.close();
+
+    if (logger) {
+        logger.info("-------------------------");
+        logger.info(formatHash(newC.transcript, `New contribution #${mpcAfter.contributions.length} ${newC.name || ""}:`));
+        if (newC.type == 1) {
+            logger.info(`Beacon hex: ${byteArray2hex(newC.beaconHash)}`);
+            logger.info(`Beacon iterations exp: ${newC.numIterationsExp}`);
+        }
+        logger.info("-------------------------");
+        logger.info("v2params Ok!");
+    }
+
+    return true;
+
+    async function sectionHasSameRatio(groupName, fd1, sections1, fd2, sections2, idSection, g2sp, g2spx, sectionName) {
+        const MAX_CHUNK_SIZE = 1 << 20;
+        const G = curve[groupName];
+        const sG = G.F.n8 * 2;
+        await binFileUtils__namespace.startReadUniqueSection(fd1, sections1, idSection);
+        await binFileUtils__namespace.startReadUniqueSection(fd2, sections2, idSection);
+        let R1 = G.zero;
+        let R2 = G.zero;
+        const nPoints = sections1[idSection][0].size / sG;
+        for (let i = 0; i < nPoints; i += MAX_CHUNK_SIZE) {
+            if (logger) logger.debug(`Same ratio check ${sectionName}:  ${i}/${nPoints}`);
+            const n = Math.min(nPoints - i, MAX_CHUNK_SIZE);
+            const bases1 = await fd1.read(n * sG);
+            const bases2 = await fd2.read(n * sG);
+            const scalars = getRandomBytes(4 * n);
+            const r1 = await G.multiExpAffine(bases1, scalars);
+            const r2 = await G.multiExpAffine(bases2, scalars);
+            R1 = G.add(R1, r1);
+            R2 = G.add(R2, r2);
+        }
+        await binFileUtils__namespace.endReadSection(fd1);
+        await binFileUtils__namespace.endReadSection(fd2);
+        if (nPoints == 0) return true;
+        return (await sameRatio(curve, R1, R2, g2sp, g2spx)) === true;
+    }
+
+    // sameRatioH and batchSubtract*: structurally identical to the corresponding
+    // helpers inside zkey_verify_frominit.js. Auditor: confirm byte-equivalent
+    // semantics with that file.
+    async function sameRatioH() {
+        const MAX_CHUNK_SIZE = 1 << 20;
+        const G = curve.G1;
+        const Fr = curve.Fr;
+        const sG = G.F.n8 * 2;
+        const {fd: fdPTau, sections: sectionsPTau} = await binFileUtils__namespace.readBinFile(pTauFileName, "ptau", 1);
+
+        let buff_r = new ffjavascript.BigBuffer(zkeyAfter.domainSize * zkeyAfter.n8r);
+        const seed = new Array(8);
+        for (let i = 0; i < 8; i++) {
+            seed[i] = readUInt32BE(getRandomBytes(4), 0);
+        }
+        const rng = new ffjavascript.ChaCha(seed);
+        for (let i = 0; i < zkeyAfter.domainSize - 1; i++) {
+            const e = Fr.fromRng(rng);
+            Fr.toRprLE(buff_r, i * zkeyAfter.n8r, e);
+        }
+        Fr.toRprLE(buff_r, (zkeyAfter.domainSize - 1) * zkeyAfter.n8r, Fr.zero);
+
+        let R1 = G.zero;
+        for (let i = 0; i < zkeyAfter.domainSize; i += MAX_CHUNK_SIZE) {
+            if (logger) logger.debug(`H Verification(tau):  ${i}/${zkeyAfter.domainSize}`);
+            const n = Math.min(zkeyAfter.domainSize - i, MAX_CHUNK_SIZE);
+            const buff1 = await fdPTau.read(sG * n, sectionsPTau[2][0].p + zkeyAfter.domainSize * sG + i * sG);
+            const buff2 = await fdPTau.read(sG * n, sectionsPTau[2][0].p + i * sG);
+            const buffB = await batchSubtract(buff1, buff2);
+            const buffS = buff_r.slice(i * zkeyAfter.n8r, (i + n) * zkeyAfter.n8r);
+            const r = await G.multiExpAffine(buffB, buffS);
+            R1 = G.add(R1, r);
+        }
+
+        buff_r = await Fr.batchToMontgomery(buff_r);
+        let first;
+        if (zkeyAfter.power < Fr.s) {
+            first = Fr.neg(Fr.e(2));
+        } else {
+            const small_m = 2 ** Fr.s;
+            const shift_to_small_m = Fr.exp(Fr.shift, small_m);
+            first = Fr.sub(shift_to_small_m, Fr.one);
+        }
+        const inc = zkeyAfter.power < Fr.s ? Fr.w[zkeyAfter.power + 1] : Fr.shift;
+        buff_r = await Fr.batchApplyKey(buff_r, first, inc);
+        buff_r = await Fr.fft(buff_r);
+        buff_r = await Fr.batchFromMontgomery(buff_r);
+
+        await binFileUtils__namespace.startReadUniqueSection(fdAfter, sectionsAfter, 9);
+        let R2 = G.zero;
+        for (let i = 0; i < zkeyAfter.domainSize; i += MAX_CHUNK_SIZE) {
+            if (logger) logger.debug(`H Verification(lagrange):  ${i}/${zkeyAfter.domainSize}`);
+            const n = Math.min(zkeyAfter.domainSize - i, MAX_CHUNK_SIZE);
+            const buff = await fdAfter.read(sG * n);
+            const buffS = buff_r.slice(i * zkeyAfter.n8r, (i + n) * zkeyAfter.n8r);
+            const r = await G.multiExpAffine(buff, buffS);
+            R2 = G.add(R2, r);
+        }
+        await binFileUtils__namespace.endReadSection(fdAfter);
+
+        return (await sameRatio(curve, R1, R2, zkeyAfter.vk_delta_2, zkeyBefore.vk_delta_2)) === true;
+    }
+
+    async function batchSubtract(buff1, buff2) {
+        const sG = curve.G1.F.n8 * 2;
+        const nPoints = buff1.byteLength / sG;
+        const concurrency = curve.tm.concurrency;
+        const nPointsPerThread = Math.floor(nPoints / concurrency);
+        const opPromises = [];
+        for (let i = 0; i < concurrency; i++) {
+            let n;
+            if (i < concurrency - 1) {
+                n = nPointsPerThread;
+            } else {
+                n = nPoints - i * nPointsPerThread;
+            }
+            if (n == 0) continue;
+            const subBuff1 = buff1.slice(i * nPointsPerThread * sG, (i * nPointsPerThread + n) * sG);
+            const subBuff2 = buff2.slice(i * nPointsPerThread * sG, (i * nPointsPerThread + n) * sG);
+            opPromises.push(batchSubtractThread(subBuff1, subBuff2));
+        }
+        const result = await Promise.all(opPromises);
+        const fullBuffOut = new Uint8Array(nPoints * sG);
+        let p = 0;
+        for (let i = 0; i < result.length; i++) {
+            fullBuffOut.set(result[i][0], p);
+            p += result[i][0].byteLength;
+        }
+        return fullBuffOut;
+    }
+
+    async function batchSubtractThread(buff1, buff2) {
+        const sG1 = curve.G1.F.n8 * 2;
+        const sGmid = curve.G1.F.n8 * 3;
+        const nPoints = buff1.byteLength / sG1;
+        const task = [];
+        task.push({cmd: "ALLOCSET", var: 0, buff: buff1});
+        task.push({cmd: "ALLOCSET", var: 1, buff: buff2});
+        task.push({cmd: "ALLOC", var: 2, len: nPoints * sGmid});
+        for (let i = 0; i < nPoints; i++) {
+            task.push({
+                cmd: "CALL",
+                fnName: "g1m_subAffine",
+                params: [
+                    {var: 0, offset: i * sG1},
+                    {var: 1, offset: i * sG1},
+                    {var: 2, offset: i * sGmid},
+                ]
+            });
+        }
+        task.push({cmd: "CALL", fnName: "g1m_batchToAffine", params: [
+            {var: 2}, {val: nPoints}, {var: 2},
+        ]});
+        task.push({cmd: "GET", out: 0, var: 2, len: nPoints * sG1});
+        return await curve.tm.queueAction(task);
+    }
 }
 
 /*
@@ -12712,6 +13236,34 @@ const commands = [
         action: zkeyVerifyFromInit
     },
     {
+        cmd: "zkey extract <circuit.zkey> <circuit.v2params>",
+        description: "Extract a partial v2params file (sections 1, 2, 8, 9, 10) from a full zkey",
+        alias: ["zkex"],
+        options: "-verbose|v",
+        action: zkeyExtract
+    },
+    {
+        cmd: "zkey contribute v2params <circuit_old.v2params> <circuit_new.v2params>",
+        description: "creates a new contribution operating on a v2params (partial zkey) file",
+        alias: ["zkcv2"],
+        options: "-verbose|v -entropy|e -name|n",
+        action: zkeyContributeV2Params
+    },
+    {
+        cmd: "zkey verify v2params <circuit_before.v2params> <circuit_after.v2params> <powersoftau.ptau>",
+        description: "Verify a single Phase 2 contribution between two v2params files using ptau",
+        alias: ["zkvv2"],
+        options: "-verbose|v",
+        action: zkeyVerifyV2Params
+    },
+    {
+        cmd: "zkey assemble <base.zkey> <circuit.v2params> <circuit_out.zkey>",
+        description: "Assemble a full zkey by combining a base zkey (sections 3-7) with v2params (sections 1, 2, 8, 9, 10)",
+        alias: ["zkas"],
+        options: "-verbose|v",
+        action: zkeyAssemble
+    },
+    {
         cmd: "zkey export verificationkey [circuit_final.zkey] [verification_key.json]",
         description: "Exports a verification key",
         alias: ["zkev"],
@@ -13535,6 +14087,44 @@ async function zkeyContribute(params, options) {
     // Discard contribuionHash
     await phase2contribute(zkeyOldName, zkeyNewName, options.name, options.entropy, logger);
 
+    return 0;
+}
+
+// zkey extract <circuit.zkey> <circuit.v2params>
+async function zkeyExtract(params, options) {
+    const zkeyName = params[0];
+    const v2paramsName = params[1];
+    if (options.verbose) Logger__default["default"].setLogLevel("DEBUG");
+    await zkeyExtract$1(zkeyName, v2paramsName, logger);
+    return 0;
+}
+
+// zkey contribute v2params <circuit_old.v2params> <circuit_new.v2params>
+async function zkeyContributeV2Params(params, options) {
+    const oldName = params[0];
+    const newName = params[1];
+    if (options.verbose) Logger__default["default"].setLogLevel("DEBUG");
+    await phase2contributeV2Params(oldName, newName, options.name, options.entropy, logger);
+    return 0;
+}
+
+// zkey verify v2params <circuit_before.v2params> <circuit_after.v2params> <powersoftau.ptau>
+async function zkeyVerifyV2Params(params, options) {
+    const beforeName = params[0];
+    const afterName = params[1];
+    const ptauName = params[2];
+    if (options.verbose) Logger__default["default"].setLogLevel("DEBUG");
+    const ok = await phase2verifyV2Params(beforeName, afterName, ptauName, logger);
+    return ok === true ? 0 : 1;
+}
+
+// zkey assemble <base.zkey> <circuit.v2params> <circuit_out.zkey>
+async function zkeyAssemble(params, options) {
+    const baseName = params[0];
+    const v2paramsName = params[1];
+    const outName = params[2];
+    if (options.verbose) Logger__default["default"].setLogLevel("DEBUG");
+    await zkeyAssemble$1(baseName, v2paramsName, outName, logger);
     return 0;
 }
 
