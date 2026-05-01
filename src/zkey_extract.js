@@ -34,7 +34,10 @@ import * as binFileUtils from "@iden3/binfileutils";
 
 export default async function zkeyExtract(zkeyFullName, v2paramsName, logger) {
     const {fd: fdOld, sections} = await binFileUtils.readBinFile(zkeyFullName, "zkey", 2);
-    const fdNew = await binFileUtils.createBinFile(v2paramsName, "zkey", 1, 10);
+    // Header declares 5 sections — we only write 1, 2, 8, 9, 10. (Native readBinFile
+    // is lenient on a wrong nSections, but browser MemFile bounds-checks and throws
+    // "Reading out of bounds" on the bogus extra entries. Set the count correctly.)
+    const fdNew = await binFileUtils.createBinFile(v2paramsName, "zkey", 1, 5);
 
     // Section 1: protocol id
     await binFileUtils.copySection(fdOld, sections, fdNew, 1);

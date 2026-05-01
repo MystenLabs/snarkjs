@@ -49,7 +49,11 @@ export default async function phase2contributeV2Params(v2paramsOld, v2paramsNew,
 
     const mpcParams = await zkeyUtils.readMPCParams(fdOld, curve, sections);
 
-    const fdNew = await binFileUtils.createBinFile(v2paramsNew, "zkey", 1, 10);
+    // Header declares 5 sections — writeHeader writes (1, 2), applyKeyToSection writes
+    // (8, 9), writeMPCParams writes (10). (Native readBinFile is lenient on a wrong
+    // nSections, but browser MemFile bounds-checks and throws "Reading out of bounds"
+    // on the bogus extra entries.)
+    const fdNew = await binFileUtils.createBinFile(v2paramsNew, "zkey", 1, 5);
 
 
     const rng = await misc.getRandomRng(entropy);
