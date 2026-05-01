@@ -32,4 +32,3 @@ export {default as exportSolidityVerifier} from "./zkey_export_solidityverifier.
 export {default as extract} from "./zkey_extract.js";
 export {default as assemble} from "./zkey_assemble.js";
 export {default as contributeV2Params} from "./zkey_contribute_v2params.js";
-export {default as verifyV2Params} from "./zkey_verify_v2params.js";

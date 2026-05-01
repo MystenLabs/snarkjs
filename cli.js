@@ -243,13 +243,6 @@ const commands = [
         action: zkeyContributeV2Params
     },
     {
-        cmd: "zkey verify v2params <circuit_before.v2params> <circuit_after.v2params> <powersoftau.ptau>",
-        description: "Verify a single Phase 2 contribution between two v2params files using ptau",
-        alias: ["zkvv2"],
-        options: "-verbose|v",
-        action: zkeyVerifyV2Params
-    },
-    {
         cmd: "zkey assemble <base.zkey> <circuit.v2params> <circuit_out.zkey>",
         description: "Assemble a full zkey by combining a base zkey (sections 3-7) with v2params (sections 1, 2, 8, 9, 10)",
         alias: ["zkas"],
@@ -1099,16 +1092,6 @@ async function zkeyContributeV2Params(params, options) {
     if (options.verbose) Logger.setLogLevel("DEBUG");
     await zkey.contributeV2Params(oldName, newName, options.name, options.entropy, logger);
     return 0;
-}
-
-// zkey verify v2params <circuit_before.v2params> <circuit_after.v2params> <powersoftau.ptau>
-async function zkeyVerifyV2Params(params, options) {
-    const beforeName = params[0];
-    const afterName = params[1];
-    const ptauName = params[2];
-    if (options.verbose) Logger.setLogLevel("DEBUG");
-    const ok = await zkey.verifyV2Params(beforeName, afterName, ptauName, logger);
-    return ok === true ? 0 : 1;
 }
 
 // zkey assemble <base.zkey> <circuit.v2params> <circuit_out.zkey>
