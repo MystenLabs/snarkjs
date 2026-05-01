@@ -6377,6 +6377,182 @@ async function exportSolidityVerifier(zKeyName, templates, logger) {
     along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
 */
 
+async function zkeyExtract(zkeyFullName, v2paramsName, logger) {
+    const {fd: fdOld, sections} = await binFileUtils__namespace.readBinFile(zkeyFullName, "zkey", 2);
+    const fdNew = await binFileUtils__namespace.createBinFile(v2paramsName, "zkey", 1, 10);
+
+    // Section 1: protocol id
+    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 1);
+    // Section 2: header (curve, sizes, vk_alpha/beta/gamma/delta)
+    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 2);
+    // Section 8: L points
+    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 8);
+    // Section 9: H points
+    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 9);
+    // Section 10: MPC params (csHash + contribution chain)
+    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 10);
+
+    await fdOld.close();
+    await fdNew.close();
+
+    if (logger) logger.info(`Extracted v2params: ${v2paramsName}`);
+}
+
+/*
+    Copyright 2018 0KIMS association.
+
+    This file is part of snarkJS.
+
+    snarkJS is a free software: you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    snarkJS is distributed in the hope that it will be useful, but WITHOUT
+    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
+    License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+async function zkeyAssemble(baseZkeyName, v2paramsName, outZkeyName, logger) {
+    const {fd: fdBase, sections: baseSections} = await binFileUtils__namespace.readBinFile(baseZkeyName, "zkey", 2);
+    const {fd: fdParts, sections: partsSections} = await binFileUtils__namespace.readBinFile(v2paramsName, "zkey", 2);
+    const fdOut = await binFileUtils__namespace.createBinFile(outZkeyName, "zkey", 1, 10);
+
+    // From v2params: section 1 (protocol) and section 2 (header with updated delta)
+    await binFileUtils__namespace.copySection(fdParts, partsSections, fdOut, 1);
+    await binFileUtils__namespace.copySection(fdParts, partsSections, fdOut, 2);
+
+    // From base: sections 3-7 (IC, Coeffs, A, B1, B2) -- frozen since g16s
+    await binFileUtils__namespace.copySection(fdBase, baseSections, fdOut, 3);
+    await binFileUtils__namespace.copySection(fdBase, baseSections, fdOut, 4);
+    await binFileUtils__namespace.copySection(fdBase, baseSections, fdOut, 5);
+    await binFileUtils__namespace.copySection(fdBase, baseSections, fdOut, 6);
+    await binFileUtils__namespace.copySection(fdBase, baseSections, fdOut, 7);
+
+    // From v2params: section 8 (L), section 9 (H), section 10 (MPC params)
+    await binFileUtils__namespace.copySection(fdParts, partsSections, fdOut, 8);
+    await binFileUtils__namespace.copySection(fdParts, partsSections, fdOut, 9);
+    await binFileUtils__namespace.copySection(fdParts, partsSections, fdOut, 10);
+
+    await fdBase.close();
+    await fdParts.close();
+    await fdOut.close();
+
+    if (logger) logger.info(`Assembled zkey: ${outZkeyName}`);
+}
+
+/*
+    Copyright 2018 0KIMS association.
+
+    This file is part of snarkJS.
+
+    snarkJS is a free software: you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    snarkJS is distributed in the hope that it will be useful, but WITHOUT
+    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
+    License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+async function phase2contributeV2Params(v2paramsOld, v2paramsNew, name, entropy, logger) {
+
+    const {fd: fdOld, sections: sections} = await binFileUtils__namespace.readBinFile(v2paramsOld, "zkey", 2);
+    const zkey = await readHeader$1(fdOld, sections);
+    if (zkey.protocol != "groth16") {
+        throw new Error("zkey file is not groth16");
+    }
+
+    const curve = await getCurveFromQ(zkey.q);
+
+    const mpcParams = await readMPCParams(fdOld, curve, sections);
+
+    const fdNew = await binFileUtils__namespace.createBinFile(v2paramsNew, "zkey", 1, 10);
+
+
+    const rng = await getRandomRng(entropy);
+
+    const transcriptHasher = blake2b.blake2b.create({ dkLen: 64 });
+    transcriptHasher.update(mpcParams.csHash);
+    for (let i=0; i<mpcParams.contributions.length; i++) {
+        hashPubKey(transcriptHasher, curve, mpcParams.contributions[i]);
+    }
+
+    const curContribution = {};
+    curContribution.delta = {};
+    curContribution.delta.prvKey = curve.Fr.fromRng(rng);
+    curContribution.delta.g1_s = curve.G1.toAffine(curve.G1.fromRng(rng));
+    curContribution.delta.g1_sx = curve.G1.toAffine(curve.G1.timesFr(curContribution.delta.g1_s, curContribution.delta.prvKey));
+    hashG1(transcriptHasher, curve, curContribution.delta.g1_s);
+    hashG1(transcriptHasher, curve, curContribution.delta.g1_sx);
+    curContribution.transcript = transcriptHasher.digest();
+    curContribution.delta.g2_sp = hashToG2(curve, curContribution.transcript);
+    curContribution.delta.g2_spx = curve.G2.toAffine(curve.G2.timesFr(curContribution.delta.g2_sp, curContribution.delta.prvKey));
+
+    zkey.vk_delta_1 = curve.G1.timesFr(zkey.vk_delta_1, curContribution.delta.prvKey);
+    zkey.vk_delta_2 = curve.G2.timesFr(zkey.vk_delta_2, curContribution.delta.prvKey);
+
+    curContribution.deltaAfter = zkey.vk_delta_1;
+
+    curContribution.type = 0;
+    if (name) curContribution.name = name;
+
+    mpcParams.contributions.push(curContribution);
+
+    await writeHeader(fdNew, zkey);
+
+    // Sections 3-7 (IC, Coeffs, A, B1, B2) are NOT present in a v2params file.
+    // They are not modified by Phase 2 contributions and live only in the full
+    // base zkey on the coordinator side; `zkey assemble` reinjects them later.
+
+    const invDelta = curve.Fr.inv(curContribution.delta.prvKey);
+    await applyKeyToSection(fdOld, sections, fdNew, 8, curve, "G1", invDelta, curve.Fr.e(1), "L Section", logger);
+    await applyKeyToSection(fdOld, sections, fdNew, 9, curve, "G1", invDelta, curve.Fr.e(1), "H Section", logger);
+
+    await writeMPCParams(fdNew, curve, mpcParams);
+
+    await fdOld.close();
+    await fdNew.close();
+
+    const contributionHasher = blake2b.blake2b.create({ dkLen: 64 });
+    hashPubKey(contributionHasher, curve, curContribution);
+
+    const contributionHash = contributionHasher.digest();
+
+    if (logger) logger.info(formatHash(mpcParams.csHash, "Circuit Hash: "));
+    if (logger) logger.info(formatHash(contributionHash, "Contribution Hash: "));
+
+    return contributionHash;
+}
+
+/*
+    Copyright 2018 0KIMS association.
+
+    This file is part of snarkJS.
+
+    snarkJS is a free software: you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    snarkJS is distributed in the hope that it will be useful, but WITHOUT
+    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
+    License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
+*/
+
 var zkey = /*#__PURE__*/Object.freeze({
     __proto__: null,
     newZKey: newZKey,
@@ -6389,7 +6565,10 @@ var zkey = /*#__PURE__*/Object.freeze({
     exportJson: zkeyExportJson,
     bellmanContribute: bellmanContribute,
     exportVerificationKey: zkeyExportVerificationKey,
-    exportSolidityVerifier: exportSolidityVerifier
+    exportSolidityVerifier: exportSolidityVerifier,
+    extract: zkeyExtract,
+    assemble: zkeyAssemble,
+    contributeV2Params: phase2contributeV2Params
 });
 
 /*
