@@ -17,16 +17,16 @@
     along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
 */
 
-// Phase 2 contribution operating on a `.v2params` (partial zkey) file.
+// Phase 2 contribution operating on a phase-2 params file (p2u or p2c).
 //
-// Identical to `zkey_contribute.js` except: sections 3-7 (IC, Coeffs, A, B1, B2)
-// are not present in a v2params file, so the copy steps for those sections are
-// omitted. Every other operation -- keypair generation, transcript hashing,
-// applyKey to L (sec 8) and H (sec 9), MPC params append -- is unchanged.
+// Input format (p2u = LEM, or p2c = compressed) is auto-detected from the
+// file's magic. Output format mirrors input: a contributor handed a p2c gets
+// back a p2c; a p2u gets back a p2u.
 //
-// AUDIT NOTE: this file should be diffed against `zkey_contribute.js`. The
-// diff should consist of exactly: removal of the 5 `copySection` calls for
-// sections 3, 4, 5, 6, 7. Nothing else.
+// Logic versus zkey_contribute.js: identical math (delta keypair + applyKey
+// to L and H), but operates on the 5-section v2params layout (§1, §2, §8, §9,
+// §10) instead of the full 10-section zkey. When input is p2c, §8 and §9
+// are decompressed before applyKey and re-compressed before writing.
 
 import * as binFileUtils from "@iden3/binfileutils";
 import * as zkeyUtils from "./zkey_utils.js";
@@ -35,26 +35,27 @@ import * as misc from "./misc.js";
 import { blake2b } from "@noble/hashes/blake2b";
 import * as utils from "./zkey_utils.js";
 import { hashToG2 as hashToG2 } from "./keypair.js";
-import { applyKeyToSection } from "./mpc_applykey.js";
+import { detectV2Magic, MAGIC_P2C } from "./v2params_magic.js";
 
 export default async function phase2contributeV2Params(v2paramsOld, v2paramsNew, name, entropy, logger) {
 
-    const {fd: fdOld, sections: sections} = await binFileUtils.readBinFile(v2paramsOld, "zkey", 2);
+    const magic = await detectV2Magic(v2paramsOld);
+    const compressed = magic === MAGIC_P2C;
+
+    const {fd: fdOld, sections: sections} = await binFileUtils.readBinFile(v2paramsOld, magic, 2);
     const zkey = await zkeyUtils.readHeader(fdOld, sections);
     if (zkey.protocol != "groth16") {
         throw new Error("zkey file is not groth16");
     }
 
     const curve = await getCurve(zkey.q);
+    const sG = curve.G1.F.n8 * 2;
+    const sGc = curve.G1.F.n8;
 
     const mpcParams = await zkeyUtils.readMPCParams(fdOld, curve, sections);
 
-    // Header declares 5 sections — writeHeader writes (1, 2), applyKeyToSection writes
-    // (8, 9), writeMPCParams writes (10). (Native readBinFile is lenient on a wrong
-    // nSections, but browser MemFile bounds-checks and throws "Reading out of bounds"
-    // on the bogus extra entries.)
-    const fdNew = await binFileUtils.createBinFile(v2paramsNew, "zkey", 1, 5);
-
+    // Output format mirrors input format.
+    const fdNew = await binFileUtils.createBinFile(v2paramsNew, magic, 1, 5);
 
     const rng = await misc.getRandomRng(entropy);
 
@@ -87,13 +88,9 @@ export default async function phase2contributeV2Params(v2paramsOld, v2paramsNew,
 
     await zkeyUtils.writeHeader(fdNew, zkey);
 
-    // Sections 3-7 (IC, Coeffs, A, B1, B2) are NOT present in a v2params file.
-    // They are not modified by Phase 2 contributions and live only in the full
-    // base zkey on the coordinator side; `zkey assemble` reinjects them later.
-
     const invDelta = curve.Fr.inv(curContribution.delta.prvKey);
-    await applyKeyToSection(fdOld, sections, fdNew, 8, curve, "G1", invDelta, curve.Fr.e(1), "L Section", logger);
-    await applyKeyToSection(fdOld, sections, fdNew, 9, curve, "G1", invDelta, curve.Fr.e(1), "H Section", logger);
+    await applyKeyG1Section(fdOld, sections, fdNew, 8, curve, invDelta, compressed, "L Section", logger);
+    await applyKeyG1Section(fdOld, sections, fdNew, 9, curve, invDelta, compressed, "H Section", logger);
 
     await zkeyUtils.writeMPCParams(fdNew, curve, mpcParams);
 
@@ -109,4 +106,47 @@ export default async function phase2contributeV2Params(v2paramsOld, v2paramsNew,
     if (logger) logger.info(misc.formatHash(contributionHash, "Contribution Hash: "));
 
     return contributionHash;
+
+    // Read §id from input (compressed or LEM), apply scalar `key` to each G1 point,
+    // write back to output in the same format the input was in.
+    async function applyKeyG1Section(fdOld, sections, fdNew, id, curve, key, compressed, label, logger) {
+        const G = curve.G1;
+        const sIn = compressed ? sGc : sG;
+        const size = sections[id][0].size;
+        if (size % sIn !== 0) throw new Error(`section ${id} size not aligned`);
+        const nPoints = size / sIn;
+
+        await binFileUtils.startReadUniqueSection(fdOld, sections, id);
+        await binFileUtils.startWriteSection(fdNew, id);
+
+        const t0 = Date.now();
+        const buffIn = await fdOld.read(nPoints * sIn);
+
+        let buffLEM;
+        if (compressed) {
+            const t = Date.now();
+            buffLEM = await G.batchCtoLEM(buffIn);
+            if (logger) logger.info(`${label}: decompressed ${nPoints} points in ${((Date.now()-t)/1000).toFixed(2)} s`);
+        } else {
+            buffLEM = buffIn;
+        }
+
+        const tApply = Date.now();
+        const buffOutLEM = await G.batchApplyKey(buffLEM, key, curve.Fr.e(1));
+        if (logger) logger.info(`${label}: applyKey on ${nPoints} points in ${((Date.now()-tApply)/1000).toFixed(2)} s`);
+
+        let buffOut;
+        if (compressed) {
+            const t = Date.now();
+            buffOut = await G.batchLEMtoC(buffOutLEM);
+            if (logger) logger.info(`${label}: re-compressed in ${((Date.now()-t)/1000).toFixed(2)} s`);
+        } else {
+            buffOut = buffOutLEM;
+        }
+        await fdNew.write(buffOut);
+
+        await binFileUtils.endReadSection(fdOld);
+        await binFileUtils.endWriteSection(fdNew);
+        if (logger) logger.info(`${label}: total ${((Date.now()-t0)/1000).toFixed(2)} s (${compressed ? "p2c" : "p2u"})`);
+    }
 }

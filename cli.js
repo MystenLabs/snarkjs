@@ -230,9 +230,9 @@ const commands = [
     },
     {
         cmd: "zkey extract <circuit.zkey> <circuit.v2params>",
-        description: "Extract a partial v2params file (sections 1, 2, 8, 9, 10) from a full zkey",
+        description: "Extract a phase-2 params file (sections 1, 2, 8, 9, 10). Default magic 'p2u' (LEM uncompressed); with --compressed magic 'p2c' (G1 points compressed, ~50% smaller)",
         alias: ["zkex"],
-        options: "-verbose|v",
+        options: "-verbose|v -compressed|c",
         action: zkeyExtract
     },
     {
@@ -1081,7 +1081,7 @@ async function zkeyExtract(params, options) {
     const zkeyName = params[0];
     const v2paramsName = params[1];
     if (options.verbose) Logger.setLogLevel("DEBUG");
-    await zkey.extract(zkeyName, v2paramsName, logger);
+    await zkey.extract(zkeyName, v2paramsName, !!options.compressed, logger);
     return 0;
 }
 
