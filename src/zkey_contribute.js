@@ -30,7 +30,6 @@
 // intentionally not part of contribute.
 
 import * as binFileUtils from "@iden3/binfileutils";
-import * as fastFile from "fastfile";
 import * as zkeyUtils from "./zkey_utils.js";
 import { getCurveFromQ as getCurve } from "./curves.js";
 import * as misc from "./misc.js";
@@ -38,32 +37,9 @@ import { blake2b } from "@noble/hashes/blake2b";
 import * as utils from "./zkey_utils.js";
 import { hashToG2 as hashToG2 } from "./keypair.js";
 import { applyKeyToSection } from "./mpc_applykey.js";
-import { MAGIC_P2U } from "./v2params_magic.js";
+import { MAGIC_P2U, readMagic } from "./v2params_magic.js";
 
 const MAGIC_ZKEY = "zkey";
-
-async function readMagic(fileNameOrFd) {
-    let fd, owns = false;
-    if (typeof fileNameOrFd === "string") {
-        fd = await fastFile.readExisting(fileNameOrFd);
-        owns = true;
-    } else if (fileNameOrFd && fileNameOrFd.type === "mem") {
-        const d = fileNameOrFd.data;
-        if (!d || d.length < 4) throw new Error("input file too short");
-        return String.fromCharCode(d[0], d[1], d[2], d[3]);
-    } else {
-        fd = fileNameOrFd;
-    }
-    try {
-        const savedPos = fd.pos;
-        fd.pos = 0;
-        const b = await fd.read(4);
-        fd.pos = savedPos;
-        return String.fromCharCode(b[0], b[1], b[2], b[3]);
-    } finally {
-        if (owns) await fd.close();
-    }
-}
 
 export default async function phase2contribute(oldName, newName, name, entropy, logger) {
 

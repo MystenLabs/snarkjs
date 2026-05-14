@@ -25,24 +25,24 @@
 //
 //   p2u — sections 8/9 stored LEM uncompressed (64 B/G1)
 //   p2c — sections 8/9 stored compressed (32 B/G1)
-//
-// Returns the 4-byte form (e.g., "p2c\0") so callers can pass it directly
-// back to binFileUtils.{read,create}BinFile.
 
 import * as fastFile from "fastfile";
 
 export const MAGIC_P2U = "p2u\0";   // phase-2 params, uncompressed (LEM)
 export const MAGIC_P2C = "p2c\0";   // phase-2 params, compressed
 
-export async function detectV2Magic(fileNameOrFd) {
+// Read the first 4 bytes of a file (or mem object) as a string, without
+// disturbing any caller-held position. Returns the raw 4-char magic; the
+// caller is responsible for interpreting it.
+export async function readMagic(fileNameOrFd) {
     let fd, owns = false;
     if (typeof fileNameOrFd === "string") {
         fd = await fastFile.readExisting(fileNameOrFd);
         owns = true;
     } else if (fileNameOrFd && fileNameOrFd.type === "mem") {
-        const data = fileNameOrFd.data;
-        if (!data || data.length < 4) throw new Error("file too short");
-        return classify(data[0], data[1], data[2], data[3]);
+        const d = fileNameOrFd.data;
+        if (!d || d.length < 4) throw new Error("file too short");
+        return String.fromCharCode(d[0], d[1], d[2], d[3]);
     } else {
         fd = fileNameOrFd;
     }
@@ -51,17 +51,17 @@ export async function detectV2Magic(fileNameOrFd) {
         fd.pos = 0;
         const b = await fd.read(4);
         fd.pos = savedPos;
-        return classify(b[0], b[1], b[2], b[3]);
+        return String.fromCharCode(b[0], b[1], b[2], b[3]);
     } finally {
         if (owns) await fd.close();
     }
 }
 
-function classify(b0, b1, b2, b3) {
-    let s = "";
-    for (const b of [b0, b1, b2, b3]) s += String.fromCharCode(b);
+// Like readMagic but enforces a v2params magic (p2u or p2c). Throws on
+// anything else, including a full zkey.
+export async function detectV2Magic(fileNameOrFd) {
+    const s = await readMagic(fileNameOrFd);
     if (s === MAGIC_P2U || s === MAGIC_P2C) return s;
-    // Friendly preview for the error: strip trailing NULs.
     const preview = s.replace(/\0+$/, "");
     throw new Error(`expected p2u or p2c magic, got "${preview}"`);
 }
