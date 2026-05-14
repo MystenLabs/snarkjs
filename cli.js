@@ -180,8 +180,8 @@ const commands = [
         action: wtnsCheck
     },
     {
-        cmd: "zkey contribute <circuit_old.zkey> <circuit_new.zkey>",
-        description: "creates a zkey file with a new contribution",
+        cmd: "zkey contribute <circuit_old> <circuit_new>",
+        description: "creates a new contribution. Auto-detects input: \"zkey\" magic = full zkey, \"p2u\" magic = v2params (LEM). Output mirrors input.",
         alias: ["zkc"],
         options: "-verbose|v  -entropy|e -name|n",
         action: zkeyContribute
@@ -234,13 +234,6 @@ const commands = [
         alias: ["zkex"],
         options: "-verbose|v",
         action: zkeyExtract
-    },
-    {
-        cmd: "zkey contribute v2params <circuit_old.v2params> <circuit_new.v2params>",
-        description: "creates a new contribution operating on a v2params (partial zkey) file",
-        alias: ["zkcv2"],
-        options: "-verbose|v -entropy|e -name|n",
-        action: zkeyContributeV2Params
     },
     {
         cmd: "zkey assemble <base.zkey> <circuit.v2params> <circuit_out.zkey>",
@@ -1096,15 +1089,6 @@ async function zkeyExtract(params, options) {
     const v2paramsName = params[1];
     if (options.verbose) Logger.setLogLevel("DEBUG");
     await zkey.extract(zkeyName, v2paramsName, logger);
-    return 0;
-}
-
-// zkey contribute v2params <circuit_old.v2params> <circuit_new.v2params>
-async function zkeyContributeV2Params(params, options) {
-    const oldName = params[0];
-    const newName = params[1];
-    if (options.verbose) Logger.setLogLevel("DEBUG");
-    await zkey.contributeV2Params(oldName, newName, options.name, options.entropy, logger);
     return 0;
 }
 
