@@ -230,9 +230,9 @@ const commands = [
     },
     {
         cmd: "zkey extract <circuit.zkey> <circuit.v2params>",
-        description: "Extract a phase-2 params file (sections 1, 2, 8, 9, 10). Default magic 'p2u' (LEM uncompressed); with --compressed magic 'p2c' (G1 points compressed, ~50% smaller)",
+        description: "Extract a p2u v2params file (sections 1, 2, 8, 9, 10). For the compressed wire format, pipe through `zkey compress v2params`.",
         alias: ["zkex"],
-        options: "-verbose|v -compressed|c",
+        options: "-verbose|v",
         action: zkeyExtract
     },
     {
@@ -248,6 +248,20 @@ const commands = [
         alias: ["zkas"],
         options: "-verbose|v",
         action: zkeyAssemble
+    },
+    {
+        cmd: "zkey compress v2params <circuit_p2u.v2params> <circuit_p2c.v2params>",
+        description: "Convert a v2params file from p2u (LEM uncompressed) to p2c (compressed, ~50% smaller)",
+        alias: ["zkcmp"],
+        options: "-verbose|v",
+        action: zkeyCompressV2Params
+    },
+    {
+        cmd: "zkey decompress v2params <circuit_p2c.v2params> <circuit_p2u.v2params>",
+        description: "Convert a v2params file from p2c (compressed) to p2u (LEM uncompressed); also validates G1 points on-curve",
+        alias: ["zkdec"],
+        options: "-verbose|v",
+        action: zkeyDecompressV2Params
     },
     {
         cmd: "zkey export verificationkey [circuit_final.zkey] [verification_key.json]",
@@ -1081,7 +1095,7 @@ async function zkeyExtract(params, options) {
     const zkeyName = params[0];
     const v2paramsName = params[1];
     if (options.verbose) Logger.setLogLevel("DEBUG");
-    await zkey.extract(zkeyName, v2paramsName, !!options.compressed, logger);
+    await zkey.extract(zkeyName, v2paramsName, logger);
     return 0;
 }
 
@@ -1101,6 +1115,24 @@ async function zkeyAssemble(params, options) {
     const outName = params[2];
     if (options.verbose) Logger.setLogLevel("DEBUG");
     await zkey.assemble(baseName, v2paramsName, outName, logger);
+    return 0;
+}
+
+// zkey compress v2params <in.v2params> <out.v2params>
+async function zkeyCompressV2Params(params, options) {
+    const inName = params[0];
+    const outName = params[1];
+    if (options.verbose) Logger.setLogLevel("DEBUG");
+    await zkey.compressV2Params(inName, outName, logger);
+    return 0;
+}
+
+// zkey decompress v2params <in.v2params> <out.v2params>
+async function zkeyDecompressV2Params(params, options) {
+    const inName = params[0];
+    const outName = params[1];
+    if (options.verbose) Logger.setLogLevel("DEBUG");
+    await zkey.decompressV2Params(inName, outName, logger);
     return 0;
 }
 

@@ -17,16 +17,17 @@
     along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
 */
 
-// Phase 2 contribution operating on a phase-2 params file (p2u or p2c).
+// Phase 2 contribution on a v2params file (p2u, LEM/uncompressed).
 //
-// Input format (p2u = LEM, or p2c = compressed) is auto-detected from the
-// file's magic. Output format mirrors input: a contributor handed a p2c gets
-// back a p2c; a p2u gets back a p2u.
+// A v2params file carries only the 5 sections Phase 2 touches: §1, §2, §8,
+// §9, §10. Sections 3-7 (IC, Coeffs, A, B1, B2) live in the base full zkey
+// on the coordinator side and are reinjected by `zkey assemble` at the end
+// of the ceremony.
 //
-// Logic versus zkey_contribute.js: identical math (delta keypair + applyKey
-// to L and H), but operates on the 5-section v2params layout (§1, §2, §8, §9,
-// §10) instead of the full 10-section zkey. When input is p2c, §8 and §9
-// are decompressed before applyKey and re-compressed before writing.
+// Math is identical to upstream `zkey_contribute.js`; this file differs
+// only in file magic, section count, and the absence of the §3-7 verbatim
+// copies. Format conversion (p2c <-> p2u) is the job of separate compress /
+// decompress commands and is intentionally not part of contribute.
 
 import * as binFileUtils from "@iden3/binfileutils";
 import * as zkeyUtils from "./zkey_utils.js";
@@ -35,27 +36,23 @@ import * as misc from "./misc.js";
 import { blake2b } from "@noble/hashes/blake2b";
 import * as utils from "./zkey_utils.js";
 import { hashToG2 as hashToG2 } from "./keypair.js";
-import { detectV2Magic, MAGIC_P2C } from "./v2params_magic.js";
+import { applyKeyToSection } from "./mpc_applykey.js";
+import { MAGIC_P2U } from "./v2params_magic.js";
 
 export default async function phase2contributeV2Params(v2paramsOld, v2paramsNew, name, entropy, logger) {
 
-    const magic = await detectV2Magic(v2paramsOld);
-    const compressed = magic === MAGIC_P2C;
-
-    const {fd: fdOld, sections: sections} = await binFileUtils.readBinFile(v2paramsOld, magic, 2);
+    const {fd: fdOld, sections: sections} = await binFileUtils.readBinFile(v2paramsOld, MAGIC_P2U, 2);
     const zkey = await zkeyUtils.readHeader(fdOld, sections);
     if (zkey.protocol != "groth16") {
         throw new Error("zkey file is not groth16");
     }
 
     const curve = await getCurve(zkey.q);
-    const sG = curve.G1.F.n8 * 2;
-    const sGc = curve.G1.F.n8;
 
     const mpcParams = await zkeyUtils.readMPCParams(fdOld, curve, sections);
 
-    // Output format mirrors input format.
-    const fdNew = await binFileUtils.createBinFile(v2paramsNew, magic, 1, 5);
+    const fdNew = await binFileUtils.createBinFile(v2paramsNew, MAGIC_P2U, 1, 5);
+
 
     const rng = await misc.getRandomRng(entropy);
 
@@ -88,9 +85,12 @@ export default async function phase2contributeV2Params(v2paramsOld, v2paramsNew,
 
     await zkeyUtils.writeHeader(fdNew, zkey);
 
+    // §3-7 (IC, Coeffs, A, B1, B2) are absent in a v2params file; `zkey
+    // assemble` reinjects them from the base zkey at the end of the ceremony.
+
     const invDelta = curve.Fr.inv(curContribution.delta.prvKey);
-    await applyKeyG1Section(fdOld, sections, fdNew, 8, curve, invDelta, compressed, "L Section", logger);
-    await applyKeyG1Section(fdOld, sections, fdNew, 9, curve, invDelta, compressed, "H Section", logger);
+    await applyKeyToSection(fdOld, sections, fdNew, 8, curve, "G1", invDelta, curve.Fr.e(1), "L Section", logger);
+    await applyKeyToSection(fdOld, sections, fdNew, 9, curve, "G1", invDelta, curve.Fr.e(1), "H Section", logger);
 
     await zkeyUtils.writeMPCParams(fdNew, curve, mpcParams);
 
@@ -106,47 +106,4 @@ export default async function phase2contributeV2Params(v2paramsOld, v2paramsNew,
     if (logger) logger.info(misc.formatHash(contributionHash, "Contribution Hash: "));
 
     return contributionHash;
-
-    // Read §id from input (compressed or LEM), apply scalar `key` to each G1 point,
-    // write back to output in the same format the input was in.
-    async function applyKeyG1Section(fdOld, sections, fdNew, id, curve, key, compressed, label, logger) {
-        const G = curve.G1;
-        const sIn = compressed ? sGc : sG;
-        const size = sections[id][0].size;
-        if (size % sIn !== 0) throw new Error(`section ${id} size not aligned`);
-        const nPoints = size / sIn;
-
-        await binFileUtils.startReadUniqueSection(fdOld, sections, id);
-        await binFileUtils.startWriteSection(fdNew, id);
-
-        const t0 = Date.now();
-        const buffIn = await fdOld.read(nPoints * sIn);
-
-        let buffLEM;
-        if (compressed) {
-            const t = Date.now();
-            buffLEM = await G.batchCtoLEM(buffIn);
-            if (logger) logger.info(`${label}: decompressed ${nPoints} points in ${((Date.now()-t)/1000).toFixed(2)} s`);
-        } else {
-            buffLEM = buffIn;
-        }
-
-        const tApply = Date.now();
-        const buffOutLEM = await G.batchApplyKey(buffLEM, key, curve.Fr.e(1));
-        if (logger) logger.info(`${label}: applyKey on ${nPoints} points in ${((Date.now()-tApply)/1000).toFixed(2)} s`);
-
-        let buffOut;
-        if (compressed) {
-            const t = Date.now();
-            buffOut = await G.batchLEMtoC(buffOutLEM);
-            if (logger) logger.info(`${label}: re-compressed in ${((Date.now()-t)/1000).toFixed(2)} s`);
-        } else {
-            buffOut = buffOutLEM;
-        }
-        await fdNew.write(buffOut);
-
-        await binFileUtils.endReadSection(fdOld);
-        await binFileUtils.endWriteSection(fdNew);
-        if (logger) logger.info(`${label}: total ${((Date.now()-t0)/1000).toFixed(2)} s (${compressed ? "p2c" : "p2u"})`);
-    }
 }
