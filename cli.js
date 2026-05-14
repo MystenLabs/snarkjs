@@ -180,8 +180,8 @@ const commands = [
         action: wtnsCheck
     },
     {
-        cmd: "zkey contribute <circuit_old.zkey> <circuit_new.zkey>",
-        description: "creates a zkey file with a new contribution",
+        cmd: "zkey contribute <circuit_old> <circuit_new>",
+        description: "creates a new contribution. Auto-detects input: \"zkey\" magic = full zkey, \"p2u\" magic = v2params (LEM). Output mirrors input.",
         alias: ["zkc"],
         options: "-verbose|v  -entropy|e -name|n",
         action: zkeyContribute
@@ -227,6 +227,34 @@ const commands = [
         alias: ["zkvi"],
         options: "-verbose|v",
         action: zkeyVerifyFromInit
+    },
+    {
+        cmd: "zkey extract <circuit.zkey> <circuit.v2params>",
+        description: "Extract a p2u v2params file (sections 1, 2, 8, 9, 10). For the compressed wire format, pipe through `zkey compress v2params`.",
+        alias: ["zkex"],
+        options: "-verbose|v",
+        action: zkeyExtract
+    },
+    {
+        cmd: "zkey assemble <base.zkey> <circuit.v2params> <circuit_out.zkey>",
+        description: "Assemble a full zkey by combining a base zkey (sections 3-7) with v2params (sections 1, 2, 8, 9, 10)",
+        alias: ["zkas"],
+        options: "-verbose|v",
+        action: zkeyAssemble
+    },
+    {
+        cmd: "zkey compress v2params <circuit_p2u.v2params> <circuit_p2c.v2params>",
+        description: "Convert a v2params file from p2u (LEM uncompressed) to p2c (compressed, ~50% smaller)",
+        alias: ["zkcmp"],
+        options: "-verbose|v",
+        action: zkeyCompressV2Params
+    },
+    {
+        cmd: "zkey decompress v2params <circuit_p2c.v2params> <circuit_p2u.v2params>",
+        description: "Convert a v2params file from p2c (compressed) to p2u (LEM uncompressed); also validates G1 points on-curve",
+        alias: ["zkdec"],
+        options: "-verbose|v",
+        action: zkeyDecompressV2Params
     },
     {
         cmd: "zkey export verificationkey [circuit_final.zkey] [verification_key.json]",
@@ -1052,6 +1080,43 @@ async function zkeyContribute(params, options) {
     // Discard contribuionHash
     await zkey.contribute(zkeyOldName, zkeyNewName, options.name, options.entropy, logger);
 
+    return 0;
+}
+
+// zkey extract <circuit.zkey> <circuit.v2params>
+async function zkeyExtract(params, options) {
+    const zkeyName = params[0];
+    const v2paramsName = params[1];
+    if (options.verbose) Logger.setLogLevel("DEBUG");
+    await zkey.extract(zkeyName, v2paramsName, logger);
+    return 0;
+}
+
+// zkey assemble <base.zkey> <circuit.v2params> <circuit_out.zkey>
+async function zkeyAssemble(params, options) {
+    const baseName = params[0];
+    const v2paramsName = params[1];
+    const outName = params[2];
+    if (options.verbose) Logger.setLogLevel("DEBUG");
+    await zkey.assemble(baseName, v2paramsName, outName, logger);
+    return 0;
+}
+
+// zkey compress v2params <in.v2params> <out.v2params>
+async function zkeyCompressV2Params(params, options) {
+    const inName = params[0];
+    const outName = params[1];
+    if (options.verbose) Logger.setLogLevel("DEBUG");
+    await zkey.compressV2Params(inName, outName, logger);
+    return 0;
+}
+
+// zkey decompress v2params <in.v2params> <out.v2params>
+async function zkeyDecompressV2Params(params, options) {
+    const inName = params[0];
+    const outName = params[1];
+    if (options.verbose) Logger.setLogLevel("DEBUG");
+    await zkey.decompressV2Params(inName, outName, logger);
     return 0;
 }
 
