@@ -17,10 +17,9 @@
     along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
 */
 
-import Blake2b from "blake2b-wasm";
+import { blake2b } from "@noble/hashes/blake2b";
 import * as utils from "./powersoftau_utils.js";
 import * as keyPair from "./keypair.js";
-import crypto from "crypto";
 import * as binFileUtils from "@iden3/binfileutils";
 import { ChaCha, BigBuffer } from "ffjavascript";
 import * as misc from "./misc.js";
@@ -29,7 +28,7 @@ const sameRatio = misc.sameRatio;
 async function verifyContribution(curve, cur, prev, logger) {
     let sr;
     if (cur.type == 1) {    // Verify the beacon.
-        const beaconKey = utils.keyFromBeacon(curve, prev.nextChallenge, cur.beaconHash, cur.numIterationsExp);
+        const beaconKey = await utils.keyFromBeacon(curve, prev.nextChallenge, cur.beaconHash, cur.numIterationsExp);
 
         if (!curve.G1.eq(cur.key.tau.g1_s, beaconKey.tau.g1_s)) {
             if (logger) logger.error(`BEACON key (tauG1_s) is not generated correctly in challenge #${cur.id}  ${cur.name || ""}` );
@@ -129,7 +128,6 @@ async function verifyContribution(curve, cur, prev, logger) {
 
 export default async function verify(tauFilename, logger) {
     let sr;
-    await Blake2b.ready();
 
     const {fd, sections} = await binFileUtils.readBinFile(tauFilename, "ptau", 1);
     const {curve, power, ceremonyPower} = await utils.readPTauHeader(fd, sections);
@@ -146,7 +144,7 @@ export default async function verify(tauFilename, logger) {
         betaG1: curve.G1.g,
         betaG2: curve.G2.g,
         nextChallenge: utils.calculateFirstChallengeHash(curve, ceremonyPower, logger),
-        responseHash: Blake2b(64).digest()
+        responseHash: blake2b.create({ dkLen: 64 }).digest()
     };
 
     if (contrs.length == 0) {
@@ -166,7 +164,7 @@ export default async function verify(tauFilename, logger) {
     if (!res) return false;
 
 
-    const nextContributionHasher = Blake2b(64);
+    const nextContributionHasher = blake2b.create({ dkLen: 64 });
     nextContributionHasher.update(curContr.responseHash);
 
     // Verify powers and compute nextChallengeHash
@@ -300,8 +298,7 @@ export default async function verify(tauFilename, logger) {
         const buffV  = new Uint8Array(curve.G1.F.n8*2*6+curve.G2.F.n8*2*3);
         utils.toPtauPubKeyRpr(buffV, 0, curve, curContr.key, false);
 
-        const responseHasher = Blake2b(64);
-        responseHasher.setPartialHash(curContr.partialHash);
+        const responseHasher =  misc.fromPartialHash(curContr.partialHash);
         responseHasher.update(buffV);
         const responseHash = responseHasher.digest();
 
@@ -361,13 +358,11 @@ export default async function verify(tauFilename, logger) {
             const basesU = await G.batchLEMtoU(bases);
             nextContributionHasher.update(basesU);
 
-            const scalars = new Uint8Array(4*(n-1));
-            crypto.randomFillSync(scalars);
-
+            const scalars = misc.getRandomBytes(4*(n-1));
 
             if (i>0) {
                 const firstBase = G.fromRprLEM(bases, 0);
-                const r = crypto.randomBytes(4).readUInt32BE(0, true);
+                const r = misc.readUInt32BE(misc.getRandomBytes(4), 0);
 
                 R1 = G.add(R1, G.timesScalar(lastBase, r));
                 R2 = G.add(R2, G.timesScalar(firstBase, r));
@@ -408,7 +403,7 @@ export default async function verify(tauFilename, logger) {
 
         const seed= new Array(8);
         for (let i=0; i<8; i++) {
-            seed[i] = crypto.randomBytes(4).readUInt32BE(0, true);
+            seed[i] = misc.readUInt32BE(misc.getRandomBytes(4), 0);
         }
 
         for (let p=0; p<= power; p ++) {

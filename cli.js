@@ -120,7 +120,7 @@ const commands = [
     },
     {
         cmd: "powersoftau truncate <powersoftau.ptau>",
-        description: "Generate diferent powers of tau with smoller sizes ",
+        description: "Generate different powers of tau with smaller sizes ",
         longDescription: " This process generates smaller ptau files from a bigger power ptau",
         alias: ["ptt"],
         options: "-verbose|v",
@@ -191,13 +191,13 @@ const commands = [
     },
     {
         cmd: "wtns check [circuit.r1cs] [[witness.wtns]",
-        description: "Check if a specific witness of a circuit fullfills the r1cs constraints",
+        description: "Check if a specific witness of a circuit fulfills the r1cs constraints",
         alias: ["wchk"],
         action: wtnsCheck
     },
     {
-        cmd: "zkey contribute <circuit_old.zkey> <circuit_new.zkey>",
-        description: "creates a zkey file with a new contribution",
+        cmd: "zkey contribute <circuit_old> <circuit_new>",
+        description: "creates a new contribution. Auto-detects input: \"zkey\" magic = full zkey, \"p2u\" magic = v2params (LEM). Output mirrors input.",
         alias: ["zkc"],
         options: "-verbose|v  -entropy|e -name|n",
         action: zkeyContribute
@@ -243,6 +243,34 @@ const commands = [
         alias: ["zkvi"],
         options: "-verbose|v",
         action: zkeyVerifyFromInit
+    },
+    {
+        cmd: "zkey extract <circuit.zkey> <circuit.v2params>",
+        description: "Extract a p2u v2params file (sections 1, 2, 8, 9, 10). For the compressed wire format, pipe through `zkey compress v2params`.",
+        alias: ["zkex"],
+        options: "-verbose|v",
+        action: zkeyExtract
+    },
+    {
+        cmd: "zkey assemble <base.zkey> <circuit.v2params> <circuit_out.zkey>",
+        description: "Assemble a full zkey by combining a base zkey (sections 3-7) with v2params (sections 1, 2, 8, 9, 10)",
+        alias: ["zkas"],
+        options: "-verbose|v",
+        action: zkeyAssemble
+    },
+    {
+        cmd: "zkey compress v2params <circuit_p2u.v2params> <circuit_p2c.v2params>",
+        description: "Convert a v2params file from p2u (LEM uncompressed) to p2c (compressed, ~50% smaller)",
+        alias: ["zkcmp"],
+        options: "-verbose|v",
+        action: zkeyCompressV2Params
+    },
+    {
+        cmd: "zkey decompress v2params <circuit_p2c.v2params> <circuit_p2u.v2params>",
+        description: "Convert a v2params file from p2c (compressed) to p2u (LEM uncompressed); also validates G1 points on-curve",
+        alias: ["zkdec"],
+        options: "-verbose|v",
+        action: zkeyDecompressV2Params
     },
     {
         cmd: "zkey export verificationkey [circuit_final.zkey] [verification_key.json]",
@@ -382,7 +410,7 @@ TODO COMMANDS
     },
     {
         cmd: "witness verify <circuit.r1cs> <witness.wtns>",
-        description: "Verify a witness agains a r1cs",
+        description: "Verify a witness against a r1cs",
         alias: ["wv"],
         action: witnessVerify
     },
@@ -728,7 +756,10 @@ async function powersOfTauNew(params, options) {
 
     if (options.verbose) Logger.setLogLevel("DEBUG");
 
-    return await powersOfTau.newAccumulator(curve, power, ptauName, logger);
+    // Discard firstChallengeHash
+    await powersOfTau.newAccumulator(curve, power, ptauName, logger);
+
+    return 0;
 }
 
 async function powersOfTauExportChallenge(params, options) {
@@ -745,7 +776,10 @@ async function powersOfTauExportChallenge(params, options) {
 
     if (options.verbose) Logger.setLogLevel("DEBUG");
 
-    return await powersOfTau.exportChallenge(ptauName, challengeName, logger);
+    // Discard curChallengeHash
+    await powersOfTau.exportChallenge(ptauName, challengeName, logger);
+
+    return 0;
 }
 
 // powersoftau challenge contribute <curve> <challenge> [response]
@@ -765,7 +799,9 @@ async function powersOfTauChallengeContribute(params, options) {
 
     if (options.verbose) Logger.setLogLevel("DEBUG");
 
-    return await powersOfTau.challengeContribute(curve, challengeName, responseName, options.entropy, logger);
+    await powersOfTau.challengeContribute(curve, challengeName, responseName, options.entropy, logger);
+
+    return 0;
 }
 
 
@@ -785,10 +821,10 @@ async function powersOfTauImport(params, options) {
 
     if (options.verbose) Logger.setLogLevel("DEBUG");
 
-    const res = await powersOfTau.importResponse(oldPtauName, response, newPtauName, options.name, importPoints, logger);
+    const nextChallenge = await powersOfTau.importResponse(oldPtauName, response, newPtauName, options.name, importPoints, logger);
 
-    if (res) return res;
-    if (!doCheck) return;
+    if (nextChallenge) return 0;
+    if (!doCheck) return 0;
 
     // TODO Verify
 }
@@ -864,7 +900,10 @@ async function powersOfTauBeacon(params, options) {
 
     if (options.verbose) Logger.setLogLevel("DEBUG");
 
-    return await powersOfTau.beacon(oldPtauName, newPtauName, options.name, beaconHashStr, numIterationsExp, logger);
+    // Discard hashResponse
+    await powersOfTau.beacon(oldPtauName, newPtauName, options.name, beaconHashStr, numIterationsExp, logger);
+
+    return 0;
 }
 
 async function powersOfTauContribute(params, options) {
@@ -876,7 +915,10 @@ async function powersOfTauContribute(params, options) {
 
     if (options.verbose) Logger.setLogLevel("DEBUG");
 
-    return await powersOfTau.contribute(oldPtauName, newPtauName, options.name, options.entropy, logger);
+    // Discard hashResponse
+    await powersOfTau.contribute(oldPtauName, newPtauName, options.name, options.entropy, logger);
+
+    return 0;
 }
 
 async function powersOfTauPreparePhase2(params, options) {
@@ -888,7 +930,9 @@ async function powersOfTauPreparePhase2(params, options) {
 
     if (options.verbose) Logger.setLogLevel("DEBUG");
 
-    return await powersOfTau.preparePhase2(oldPtauName, newPtauName, logger);
+    await powersOfTau.preparePhase2(oldPtauName, newPtauName, logger);
+
+    return 0;
 }
 
 async function powersOfTauConvert(params, options) {
@@ -900,7 +944,9 @@ async function powersOfTauConvert(params, options) {
 
     if (options.verbose) Logger.setLogLevel("DEBUG");
 
-    return await powersOfTau.convert(oldPtauName, newPtauName, logger);
+    await powersOfTau.convert(oldPtauName, newPtauName, logger);
+
+    return 0;
 }
 
 
@@ -916,7 +962,10 @@ async function powersOfTauTruncate(params, options) {
 
     if (options.verbose) Logger.setLogLevel("DEBUG");
 
-    return await powersOfTau.truncate(ptauName, template, logger);
+    // Discard `true`
+    await powersOfTau.truncate(ptauName, template, logger);
+
+    return 0;
 }
 
 // powersoftau export json <powersoftau_0000.ptau> <powersoftau_0000.json>",
@@ -961,7 +1010,10 @@ async function zkeyNew(params, options) {
 
     if (options.verbose) Logger.setLogLevel("DEBUG");
 
-    return zkey.newZKey(r1csName, ptauName, zkeyName, logger);
+    // Discard csHash
+    await zkey.newZKey(r1csName, ptauName, zkeyName, logger);
+
+    return 0;
 }
 
 // zkey export bellman [circuit_0000.zkey] [circuit.mpcparams]
@@ -979,8 +1031,9 @@ async function zkeyExportBellman(params, options) {
 
     if (options.verbose) Logger.setLogLevel("DEBUG");
 
-    return zkey.exportBellman(zkeyName, mpcparamsName, logger);
+    await zkey.exportBellman(zkeyName, mpcparamsName, logger);
 
+    return 0;
 }
 
 
@@ -1083,7 +1136,47 @@ async function zkeyContribute(params, options) {
 
     if (options.verbose) Logger.setLogLevel("DEBUG");
 
-    return zkey.contribute(zkeyOldName, zkeyNewName, options.name, options.entropy, logger);
+    // Discard contribuionHash
+    await zkey.contribute(zkeyOldName, zkeyNewName, options.name, options.entropy, logger);
+
+    return 0;
+}
+
+// zkey extract <circuit.zkey> <circuit.v2params>
+async function zkeyExtract(params, options) {
+    const zkeyName = params[0];
+    const v2paramsName = params[1];
+    if (options.verbose) Logger.setLogLevel("DEBUG");
+    await zkey.extract(zkeyName, v2paramsName, logger);
+    return 0;
+}
+
+// zkey assemble <base.zkey> <circuit.v2params> <circuit_out.zkey>
+async function zkeyAssemble(params, options) {
+    const baseName = params[0];
+    const v2paramsName = params[1];
+    const outName = params[2];
+    if (options.verbose) Logger.setLogLevel("DEBUG");
+    await zkey.assemble(baseName, v2paramsName, outName, logger);
+    return 0;
+}
+
+// zkey compress v2params <in.v2params> <out.v2params>
+async function zkeyCompressV2Params(params, options) {
+    const inName = params[0];
+    const outName = params[1];
+    if (options.verbose) Logger.setLogLevel("DEBUG");
+    await zkey.compressV2Params(inName, outName, logger);
+    return 0;
+}
+
+// zkey decompress v2params <in.v2params> <out.v2params>
+async function zkeyDecompressV2Params(params, options) {
+    const inName = params[0];
+    const outName = params[1];
+    if (options.verbose) Logger.setLogLevel("DEBUG");
+    await zkey.decompressV2Params(inName, outName, logger);
+    return 0;
 }
 
 // zkey beacon <circuit_old.zkey> <circuit_new.zkey> <beaconHash(Hex)> <numIterationsExp>
@@ -1100,7 +1193,10 @@ async function zkeyBeacon(params, options) {
 
     if (options.verbose) Logger.setLogLevel("DEBUG");
 
-    return await zkey.beacon(zkeyOldName, zkeyNewName, options.name, beaconHashStr, numIterationsExp, logger);
+    // Discard contribuionHash
+    await zkey.beacon(zkeyOldName, zkeyNewName, options.name, beaconHashStr, numIterationsExp, logger);
+
+    return 0;
 }
 
 
@@ -1121,7 +1217,10 @@ async function zkeyBellmanContribute(params, options) {
 
     if (options.verbose) Logger.setLogLevel("DEBUG");
 
-    return zkey.bellmanContribute(curve, challengeName, responseName, options.entropy, logger);
+    // Discard contributionHash
+    await zkey.bellmanContribute(curve, challengeName, responseName, options.entropy, logger);
+
+    return 0;
 }
 
 
@@ -1151,6 +1250,7 @@ async function plonkSetup(params, options) {
 
     if (options.verbose) Logger.setLogLevel("DEBUG");
 
+    // TODO: Make plonk.setup reject instead of returning -1 or null
     return plonk.setup(r1csName, ptauName, zkeyName, logger);
 }
 
@@ -1225,6 +1325,7 @@ async function fflonkSetup(params, options) {
 
     if (options.verbose) Logger.setLogLevel("DEBUG");
 
+    // TODO: Make fflonk.setup return valuable information or nothing at all
     return await fflonk.setup(r1csFilename, ptauFilename, zkeyFilename, logger);
 }
 

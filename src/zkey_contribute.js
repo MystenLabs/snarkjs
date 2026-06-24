@@ -17,19 +17,41 @@
     along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
 */
 
+// Phase 2 contribution. Auto-detects input format from the file's magic:
+//
+//   "zkey":  full Groth16 zkey (10 sections). Sections 3-7 (IC, Coeffs,
+//            A, B1, B2) are copied verbatim into the output.
+//   "p2u\0": v2params (LEM/uncompressed, 5 sections). Sections 3-7 are
+//            absent; `zkey assemble` reinjects them from the base zkey
+//            at the end of the ceremony.
+//
+// Output mirrors the input magic. Format conversion (p2c <-> p2u) is the
+// job of `zkey compress v2params` / `zkey decompress v2params` and is
+// intentionally not part of contribute.
+
 import * as binFileUtils from "@iden3/binfileutils";
 import * as zkeyUtils from "./zkey_utils.js";
 import { getCurveFromQ as getCurve } from "./curves.js";
 import * as misc from "./misc.js";
-import Blake2b from "blake2b-wasm";
+import { blake2b } from "@noble/hashes/blake2b";
 import * as utils from "./zkey_utils.js";
 import { hashToG2 as hashToG2 } from "./keypair.js";
 import { applyKeyToSection } from "./mpc_applykey.js";
+import { MAGIC_P2U, readMagic } from "./v2params_magic.js";
 
-export default async function phase2contribute(zkeyNameOld, zkeyNameNew, name, entropy, logger) {
-    await Blake2b.ready();
+const MAGIC_ZKEY = "zkey";
 
-    const {fd: fdOld, sections: sections} = await binFileUtils.readBinFile(zkeyNameOld, "zkey", 2);
+export default async function phase2contribute(oldName, newName, name, entropy, logger) {
+
+    const magic = await readMagic(oldName);
+    if (magic !== MAGIC_ZKEY && magic !== MAGIC_P2U) {
+        const preview = magic.replace(/\0+$/, "");
+        throw new Error(`expected "${MAGIC_ZKEY}" or "p2u" magic, got "${preview}"`);
+    }
+    const isFullZkey = magic === MAGIC_ZKEY;
+    const nSections = isFullZkey ? 10 : 5;
+
+    const {fd: fdOld, sections: sections} = await binFileUtils.readBinFile(oldName, magic, 2);
     const zkey = await zkeyUtils.readHeader(fdOld, sections);
     if (zkey.protocol != "groth16") {
         throw new Error("zkey file is not groth16");
@@ -39,12 +61,12 @@ export default async function phase2contribute(zkeyNameOld, zkeyNameNew, name, e
 
     const mpcParams = await zkeyUtils.readMPCParams(fdOld, curve, sections);
 
-    const fdNew = await binFileUtils.createBinFile(zkeyNameNew, "zkey", 1, 10);
+    const fdNew = await binFileUtils.createBinFile(newName, magic, 1, nSections);
 
 
     const rng = await misc.getRandomRng(entropy);
 
-    const transcriptHasher = Blake2b(64);
+    const transcriptHasher = blake2b.create({ dkLen: 64 });
     transcriptHasher.update(mpcParams.csHash);
     for (let i=0; i<mpcParams.contributions.length; i++) {
         utils.hashPubKey(transcriptHasher, curve, mpcParams.contributions[i]);
@@ -73,20 +95,16 @@ export default async function phase2contribute(zkeyNameOld, zkeyNameNew, name, e
 
     await zkeyUtils.writeHeader(fdNew, zkey);
 
-    // IC
-    await binFileUtils.copySection(fdOld, sections, fdNew, 3);
-
-    // Coeffs (Keep original)
-    await binFileUtils.copySection(fdOld, sections, fdNew, 4);
-
-    // A Section
-    await binFileUtils.copySection(fdOld, sections, fdNew, 5);
-
-    // B1 Section
-    await binFileUtils.copySection(fdOld, sections, fdNew, 6);
-
-    // B2 Section
-    await binFileUtils.copySection(fdOld, sections, fdNew, 7);
+    if (isFullZkey) {
+        // IC, Coeffs, A, B1, B2 -- frozen since g16s; copy verbatim.
+        await binFileUtils.copySection(fdOld, sections, fdNew, 3);
+        await binFileUtils.copySection(fdOld, sections, fdNew, 4);
+        await binFileUtils.copySection(fdOld, sections, fdNew, 5);
+        await binFileUtils.copySection(fdOld, sections, fdNew, 6);
+        await binFileUtils.copySection(fdOld, sections, fdNew, 7);
+    }
+    // For p2u: sections 3-7 are absent; `zkey assemble` reinjects them
+    // from the base zkey at the end of the ceremony.
 
     const invDelta = curve.Fr.inv(curContribution.delta.prvKey);
     await applyKeyToSection(fdOld, sections, fdNew, 8, curve, "G1", invDelta, curve.Fr.e(1), "L Section", logger);
@@ -97,13 +115,13 @@ export default async function phase2contribute(zkeyNameOld, zkeyNameNew, name, e
     await fdOld.close();
     await fdNew.close();
 
-    const contributionHasher = Blake2b(64);
+    const contributionHasher = blake2b.create({ dkLen: 64 });
     utils.hashPubKey(contributionHasher, curve, curContribution);
 
-    const contribuionHash = contributionHasher.digest();
+    const contributionHash = contributionHasher.digest();
 
     if (logger) logger.info(misc.formatHash(mpcParams.csHash, "Circuit Hash: "));
-    if (logger) logger.info(misc.formatHash(contribuionHash, "Contribution Hash: "));
+    if (logger) logger.info(misc.formatHash(contributionHash, "Contribution Hash: "));
 
-    return contribuionHash;
+    return contributionHash;
 }

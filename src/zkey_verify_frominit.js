@@ -20,11 +20,10 @@
 import * as binFileUtils from "@iden3/binfileutils";
 import * as zkeyUtils from "./zkey_utils.js";
 import { getCurveFromQ as getCurve } from "./curves.js";
-import Blake2b from "blake2b-wasm";
+import { blake2b } from "@noble/hashes/blake2b";
 import * as misc from "./misc.js";
 import { hashToG2 as hashToG2 } from "./keypair.js";
 const sameRatio = misc.sameRatio;
-import crypto from "crypto";
 import {hashG1, hashPubKey} from "./zkey_utils.js";
 import { Scalar, ChaCha, BigBuffer } from "ffjavascript";
 
@@ -33,8 +32,6 @@ import { Scalar, ChaCha, BigBuffer } from "ffjavascript";
 export default async function phase2verifyFromInit(initFileName, pTauFileName, zkeyFileName, logger) {
 
     let sr;
-    await Blake2b.ready();
-
     const {fd, sections} = await binFileUtils.readBinFile(zkeyFileName, "zkey", 2);
     const zkey = await zkeyUtils.readHeader(fd, sections, false);
     if (zkey.protocol != "groth16") {
@@ -46,7 +43,7 @@ export default async function phase2verifyFromInit(initFileName, pTauFileName, z
 
     const mpcParams = await zkeyUtils.readMPCParams(fd, curve, sections);
 
-    const accumulatedHasher = Blake2b(64);
+    const accumulatedHasher = blake2b.create({ dkLen: 64 });
     accumulatedHasher.update(mpcParams.csHash);
     let curDelta = curve.G1.g;
     for (let i=0; i<mpcParams.contributions.length; i++) {
@@ -76,7 +73,7 @@ export default async function phase2verifyFromInit(initFileName, pTauFileName, z
         }
 
         if (c.type == 1) {
-            const rng = misc.rngFromBeaconParams(c.beaconHash, c.numIterationsExp);
+            const rng = await misc.rngFromBeaconParams(c.beaconHash, c.numIterationsExp);
             const expected_prvKey = curve.Fr.fromRng(rng);
             const expected_g1_s = curve.G1.toAffine(curve.G1.fromRng(rng));
             const expected_g1_sx = curve.G1.toAffine(curve.G1.timesFr(expected_g1_s, expected_prvKey));
@@ -92,7 +89,7 @@ export default async function phase2verifyFromInit(initFileName, pTauFileName, z
 
         hashPubKey(accumulatedHasher, curve, c);
 
-        const contributionHasher = Blake2b(64);
+        const contributionHasher = blake2b.create({ dkLen: 64 });
         hashPubKey(contributionHasher, curve, c);
 
         c.contributionHash = contributionHasher.digest();
@@ -252,9 +249,7 @@ export default async function phase2verifyFromInit(initFileName, pTauFileName, z
             const bases1 = await fd1.read(n*sG);
             const bases2 = await fd2.read(n*sG);
 
-            const scalars = new Uint8Array(4*n);
-            crypto.randomFillSync(scalars);
-
+            const scalars = misc.getRandomBytes(4*n);
 
             const r1 = await G.multiExpAffine(bases1, scalars);
             const r2 = await G.multiExpAffine(bases2, scalars);
@@ -285,7 +280,7 @@ export default async function phase2verifyFromInit(initFileName, pTauFileName, z
 
         const seed= new Array(8);
         for (let i=0; i<8; i++) {
-            seed[i] = crypto.randomBytes(4).readUInt32BE(0, true);
+            seed[i] = misc.readUInt32BE(misc.getRandomBytes(4), 0);
         }
         const rng = new ChaCha(seed);
         for (let i=0; i<zkey.domainSize-1; i++) {   // Note that last one is zero
@@ -296,20 +291,20 @@ export default async function phase2verifyFromInit(initFileName, pTauFileName, z
 
         let R1 = G.zero;
         for (let i=0; i<zkey.domainSize; i += MAX_CHUNK_SIZE) {
-            if (logger) logger.debug(`H Verificaition(tau):  ${i}/${zkey.domainSize}`);
+            if (logger) logger.debug(`H Verification(tau):  ${i}/${zkey.domainSize}`);
             const n = Math.min(zkey.domainSize - i, MAX_CHUNK_SIZE);
 
             const buff1 = await fdPTau.read(sG*n, sectionsPTau[2][0].p + zkey.domainSize*sG + i*sG);
             const buff2 = await fdPTau.read(sG*n, sectionsPTau[2][0].p + i*sG);
 
-            const buffB = await batchSubstract(buff1, buff2);
+            const buffB = await batchSubtract(buff1, buff2);
             const buffS = buff_r.slice(i*zkey.n8r, (i+n)*zkey.n8r);
             const r = await G.multiExpAffine(buffB, buffS);
 
             R1 = G.add(R1, r);
         }
 
-        // Caluclate odd coeficients in transformed domain
+        // Calculate odd coefficients in transformed domain
 
         buff_r = await Fr.batchToMontgomery(buff_r);
         // const first = curve.Fr.neg(curve.Fr.inv(curve.Fr.e(2)));
@@ -335,7 +330,7 @@ export default async function phase2verifyFromInit(initFileName, pTauFileName, z
         await binFileUtils.startReadUniqueSection(fd, sections, 9);
         let R2 = G.zero;
         for (let i=0; i<zkey.domainSize; i += MAX_CHUNK_SIZE) {
-            if (logger) logger.debug(`H Verificaition(lagrange):  ${i}/${zkey.domainSize}`);
+            if (logger) logger.debug(`H Verification(lagrange):  ${i}/${zkey.domainSize}`);
             const n = Math.min(zkey.domainSize - i, MAX_CHUNK_SIZE);
 
             const buff = await fd.read(sG*n);
@@ -354,7 +349,7 @@ export default async function phase2verifyFromInit(initFileName, pTauFileName, z
 
     }
 
-    async function batchSubstract(buff1, buff2) {
+    async function batchSubtract(buff1, buff2) {
         const sG = curve.G1.F.n8*2;
         const nPoints = buff1.byteLength / sG;
         const concurrency= curve.tm.concurrency;
@@ -371,7 +366,7 @@ export default async function phase2verifyFromInit(initFileName, pTauFileName, z
 
             const subBuff1 = buff1.slice(i*nPointsPerThread*sG1, (i*nPointsPerThread+n)*sG1);
             const subBuff2 = buff2.slice(i*nPointsPerThread*sG1, (i*nPointsPerThread+n)*sG1);
-            opPromises.push(batchSubstractThread(subBuff1, subBuff2));
+            opPromises.push(batchSubtractThread(subBuff1, subBuff2));
         }
 
 
@@ -388,7 +383,7 @@ export default async function phase2verifyFromInit(initFileName, pTauFileName, z
     }
 
 
-    async function batchSubstractThread(buff1, buff2) {
+    async function batchSubtractThread(buff1, buff2) {
         const sG1 = curve.G1.F.n8*2;
         const sGmid = curve.G1.F.n8*3;
         const nPoints = buff1.byteLength/sG1;
