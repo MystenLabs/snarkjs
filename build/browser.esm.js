@@ -1142,57 +1142,75 @@ var curves = /*#__PURE__*/Object.freeze({
     getCurveFromName: getCurveFromName
 });
 
-function number(n) {
+/**
+ * Internal assertion helpers.
+ * @module
+ */
+/** Asserts something is positive integer. */
+function anumber(n) {
     if (!Number.isSafeInteger(n) || n < 0)
-        throw new Error(`positive integer expected, not ${n}`);
+        throw new Error('positive integer expected, got ' + n);
 }
-// copied from utils
+/** Is number an Uint8Array? Copied from utils for perf. */
 function isBytes(a) {
-    return (a instanceof Uint8Array ||
-        (a != null && typeof a === 'object' && a.constructor.name === 'Uint8Array'));
+    return a instanceof Uint8Array || (ArrayBuffer.isView(a) && a.constructor.name === 'Uint8Array');
 }
-function bytes(b, ...lengths) {
+/** Asserts something is Uint8Array. */
+function abytes(b, ...lengths) {
     if (!isBytes(b))
         throw new Error('Uint8Array expected');
     if (lengths.length > 0 && !lengths.includes(b.length))
-        throw new Error(`Uint8Array expected of length ${lengths}, not of length=${b.length}`);
+        throw new Error('Uint8Array expected of length ' + lengths + ', got length=' + b.length);
 }
-function exists(instance, checkFinished = true) {
+/** Asserts a hash instance has not been destroyed / finished */
+function aexists(instance, checkFinished = true) {
     if (instance.destroyed)
         throw new Error('Hash instance has been destroyed');
     if (checkFinished && instance.finished)
         throw new Error('Hash#digest() has already been called');
 }
-function output(out, instance) {
-    bytes(out);
+/** Asserts output is properly-sized byte array */
+function aoutput(out, instance) {
+    abytes(out);
     const min = instance.outputLen;
     if (out.length < min) {
-        throw new Error(`digestInto() expects output buffer of length at least ${min}`);
+        throw new Error('digestInto() expects output buffer of length at least ' + min);
     }
 }
 
-/*! noble-hashes - MIT License (c) 2022 Paul Miller (paulmillr.com) */
-const u32 = (arr) => new Uint32Array(arr.buffer, arr.byteOffset, Math.floor(arr.byteLength / 4));
-const isLE = new Uint8Array(new Uint32Array([0x11223344]).buffer)[0] === 0x44;
+/**
+ * Utilities for hex, bytes, CSPRNG.
+ * @module
+ */
+function u32(arr) {
+    return new Uint32Array(arr.buffer, arr.byteOffset, Math.floor(arr.byteLength / 4));
+}
+/** Is current platform little-endian? Most are. Big-Endian platform: IBM */
+const isLE = /* @__PURE__ */ (() => new Uint8Array(new Uint32Array([0x11223344]).buffer)[0] === 0x44)();
 // The byte swap operation for uint32
-const byteSwap = (word) => ((word << 24) & 0xff000000) |
-    ((word << 8) & 0xff0000) |
-    ((word >>> 8) & 0xff00) |
-    ((word >>> 24) & 0xff);
-// Conditionally byte swap if on a big-endian platform
-const byteSwapIfBE = isLE ? (n) => n : (n) => byteSwap(n);
-// In place byte swap for Uint32Array
+function byteSwap(word) {
+    return (((word << 24) & 0xff000000) |
+        ((word << 8) & 0xff0000) |
+        ((word >>> 8) & 0xff00) |
+        ((word >>> 24) & 0xff));
+}
+/** Conditionally byte swap if on a big-endian platform */
+const byteSwapIfBE = isLE
+    ? (n) => n
+    : (n) => byteSwap(n);
+/** In place byte swap for Uint32Array */
 function byteSwap32(arr) {
     for (let i = 0; i < arr.length; i++) {
         arr[i] = byteSwap(arr[i]);
     }
 }
 /**
+ * Convert JS string to byte array.
  * @example utf8ToBytes('abc') // new Uint8Array([97, 98, 99])
  */
 function utf8ToBytes(str) {
     if (typeof str !== 'string')
-        throw new Error(`utf8ToBytes expected string, got ${typeof str}`);
+        throw new Error('utf8ToBytes expected string, got ' + typeof str);
     return new Uint8Array(new TextEncoder().encode(str)); // https://bugzil.la/1681809
 }
 /**
@@ -1203,16 +1221,17 @@ function utf8ToBytes(str) {
 function toBytes(data) {
     if (typeof data === 'string')
         data = utf8ToBytes(data);
-    bytes(data);
+    abytes(data);
     return data;
 }
-// For runtime check if class implements interface
+/** For runtime check if class implements interface */
 class Hash {
     // Safe version that clones internal state
     clone() {
         return this._cloneInto();
     }
 }
+/** Wraps hash function, creating an interface on top of it */
 function wrapConstructor(hashCons) {
     const hashC = (msg) => hashCons().update(toBytes(msg)).digest();
     const tmp = hashCons();
@@ -1230,8 +1249,14 @@ function wrapConstructorWithOpts(hashCons) {
     return hashC;
 }
 
-// Blake is based on ChaCha permutation.
-// For BLAKE2b, the two extra permutations for rounds 10 and 11 are SIGMA[10..11] = SIGMA[0..1].
+/**
+ * Internal helpers for blake hash.
+ * @module
+ */
+/**
+ * Internal blake variable.
+ * For BLAKE2b, the two extra permutations for rounds 10 and 11 are SIGMA[10..11] = SIGMA[0..1].
+ */
 // prettier-ignore
 const SIGMA = /* @__PURE__ */ new Uint8Array([
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
@@ -1246,7 +1271,13 @@ const SIGMA = /* @__PURE__ */ new Uint8Array([
     10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0,
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
     14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3,
+    // Blake1, unused in others
+    11, 8, 12, 0, 5, 2, 15, 13, 10, 14, 3, 6, 7, 1, 9, 4,
+    7, 9, 3, 1, 13, 12, 11, 14, 2, 6, 5, 10, 4, 0, 15, 8,
+    9, 0, 5, 7, 2, 4, 10, 15, 14, 1, 11, 12, 6, 8, 3, 13,
+    2, 12, 6, 10, 0, 11, 8, 3, 4, 13, 7, 5, 15, 14, 1, 9,
 ]);
+/** Class, from which others are subclassed. */
 class BLAKE extends Hash {
     constructor(blockLen, outputLen, opts = {}, keyLen, saltLen, persLen) {
         super();
@@ -1256,21 +1287,22 @@ class BLAKE extends Hash {
         this.pos = 0;
         this.finished = false;
         this.destroyed = false;
-        number(blockLen);
-        number(outputLen);
-        number(keyLen);
+        anumber(blockLen);
+        anumber(outputLen);
+        anumber(keyLen);
         if (outputLen < 0 || outputLen > keyLen)
             throw new Error('outputLen bigger than keyLen');
         if (opts.key !== undefined && (opts.key.length < 1 || opts.key.length > keyLen))
-            throw new Error(`key must be up 1..${keyLen} byte long or undefined`);
+            throw new Error('key length must be undefined or 1..' + keyLen);
         if (opts.salt !== undefined && opts.salt.length !== saltLen)
-            throw new Error(`salt must be ${saltLen} byte long or undefined`);
+            throw new Error('salt must be undefined or ' + saltLen);
         if (opts.personalization !== undefined && opts.personalization.length !== persLen)
-            throw new Error(`personalization must be ${persLen} byte long or undefined`);
-        this.buffer32 = u32((this.buffer = new Uint8Array(blockLen)));
+            throw new Error('personalization must be undefined or ' + persLen);
+        this.buffer = new Uint8Array(blockLen);
+        this.buffer32 = u32(this.buffer);
     }
     update(data) {
-        exists(this);
+        aexists(this);
         // Main difference with other hashes: there is flag for last block,
         // so we cannot process current block before we know that there
         // is the next one. This significantly complicates logic and reduces ability
@@ -1313,8 +1345,8 @@ class BLAKE extends Hash {
         return this;
     }
     digestInto(out) {
-        exists(this);
-        output(out, this);
+        aexists(this);
+        aoutput(out, this);
         const { pos, buffer32 } = this;
         this.finished = true;
         // Padding
@@ -1348,9 +1380,13 @@ class BLAKE extends Hash {
     }
 }
 
+/**
+ * Internal helpers for u64. BigUint64Array is too slow as per 2025, so we implement it using Uint32Array.
+ * @todo re-check https://issues.chromium.org/issues/42212588
+ * @module
+ */
 const U32_MASK64 = /* @__PURE__ */ BigInt(2 ** 32 - 1);
 const _32n = /* @__PURE__ */ BigInt(32);
-// We are not using BigUint64Array, because they are extremely slow as per 2022
 function fromBig(n, le = false) {
     if (le)
         return { h: Number(n & U32_MASK64), l: Number((n >> _32n) & U32_MASK64) };
@@ -1408,6 +1444,10 @@ const u64 = {
 };
 var u64$1 = u64;
 
+/**
+ * Blake2b hash function. Focuses on 64-bit platforms, but in JS speed different from Blake2s is negligible.
+ * @module
+ */
 // Same as SHA-512 but LE
 // prettier-ignore
 const B2B_IV = /* @__PURE__ */ new Uint32Array([
@@ -1588,9 +1628,9 @@ class BLAKE2b extends BLAKE {
     }
 }
 /**
- * BLAKE2b - optimized for 64-bit platforms. JS doesn't have uint64, so it's slower than BLAKE2s.
+ * Blake2b hash function. Focuses on 64-bit platforms, but in JS speed different from Blake2s is negligible.
  * @param msg - message that would be hashed
- * @param opts - dkLen, key, salt, personalization
+ * @param opts - dkLen output length, key for MAC mode, salt, personalization
  */
 const blake2b = /* @__PURE__ */ wrapConstructorWithOpts((opts) => new BLAKE2b(opts));
 
@@ -8208,9 +8248,76 @@ async function phase2verifyFromR1cs(r1csFileName, pTauFileName, zkeyFileName, lo
     along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
 */
 
-async function phase2contribute(zkeyNameOld, zkeyNameNew, name, entropy, logger) {
+const MAGIC_P2U = "p2u\0";   // phase-2 params, uncompressed (LEM)
+const MAGIC_P2C = "p2c\0";   // phase-2 params, compressed
 
-    const {fd: fdOld, sections: sections} = await readBinFile(zkeyNameOld, "zkey", 2);
+// Read the first 4 bytes of a file (or mem object) as a string, without
+// disturbing any caller-held position. Returns the raw 4-char magic; the
+// caller is responsible for interpreting it.
+async function readMagic(fileNameOrFd) {
+    let fd, owns = false;
+    if (typeof fileNameOrFd === "string") {
+        fd = await readExisting(fileNameOrFd);
+        owns = true;
+    } else if (fileNameOrFd && fileNameOrFd.type === "mem") {
+        const d = fileNameOrFd.data;
+        if (!d || d.length < 4) throw new Error("file too short");
+        return String.fromCharCode(d[0], d[1], d[2], d[3]);
+    } else {
+        fd = fileNameOrFd;
+    }
+    try {
+        const savedPos = fd.pos;
+        fd.pos = 0;
+        const b = await fd.read(4);
+        fd.pos = savedPos;
+        return String.fromCharCode(b[0], b[1], b[2], b[3]);
+    } finally {
+        if (owns) await fd.close();
+    }
+}
+
+// Like readMagic but enforces a v2params magic (p2u or p2c). Throws on
+// anything else, including a full zkey.
+async function detectV2Magic(fileNameOrFd) {
+    const s = await readMagic(fileNameOrFd);
+    if (s === MAGIC_P2U || s === MAGIC_P2C) return s;
+    const preview = s.replace(/\0+$/, "");
+    throw new Error(`expected p2u or p2c magic, got "${preview}"`);
+}
+
+/*
+    Copyright 2018 0KIMS association.
+
+    This file is part of snarkJS.
+
+    snarkJS is a free software: you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    snarkJS is distributed in the hope that it will be useful, but WITHOUT
+    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
+    License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+const MAGIC_ZKEY = "zkey";
+
+async function phase2contribute(oldName, newName, name, entropy, logger) {
+
+    const magic = await readMagic(oldName);
+    if (magic !== MAGIC_ZKEY && magic !== MAGIC_P2U) {
+        const preview = magic.replace(/\0+$/, "");
+        throw new Error(`expected "${MAGIC_ZKEY}" or "p2u" magic, got "${preview}"`);
+    }
+    const isFullZkey = magic === MAGIC_ZKEY;
+    const nSections = isFullZkey ? 10 : 5;
+
+    const {fd: fdOld, sections: sections} = await readBinFile(oldName, magic, 2);
     const zkey = await readHeader$1(fdOld, sections);
     if (zkey.protocol != "groth16") {
         throw new Error("zkey file is not groth16");
@@ -8220,7 +8327,7 @@ async function phase2contribute(zkeyNameOld, zkeyNameNew, name, entropy, logger)
 
     const mpcParams = await readMPCParams(fdOld, curve, sections);
 
-    const fdNew = await createBinFile(zkeyNameNew, "zkey", 1, 10);
+    const fdNew = await createBinFile(newName, magic, 1, nSections);
 
 
     const rng = await getRandomRng(entropy);
@@ -8254,20 +8361,16 @@ async function phase2contribute(zkeyNameOld, zkeyNameNew, name, entropy, logger)
 
     await writeHeader(fdNew, zkey);
 
-    // IC
-    await copySection(fdOld, sections, fdNew, 3);
-
-    // Coeffs (Keep original)
-    await copySection(fdOld, sections, fdNew, 4);
-
-    // A Section
-    await copySection(fdOld, sections, fdNew, 5);
-
-    // B1 Section
-    await copySection(fdOld, sections, fdNew, 6);
-
-    // B2 Section
-    await copySection(fdOld, sections, fdNew, 7);
+    if (isFullZkey) {
+        // IC, Coeffs, A, B1, B2 -- frozen since g16s; copy verbatim.
+        await copySection(fdOld, sections, fdNew, 3);
+        await copySection(fdOld, sections, fdNew, 4);
+        await copySection(fdOld, sections, fdNew, 5);
+        await copySection(fdOld, sections, fdNew, 6);
+        await copySection(fdOld, sections, fdNew, 7);
+    }
+    // For p2u: sections 3-7 are absent; `zkey assemble` reinjects them
+    // from the base zkey at the end of the ceremony.
 
     const invDelta = curve.Fr.inv(curContribution.delta.prvKey);
     await applyKeyToSection(fdOld, sections, fdNew, 8, curve, "G1", invDelta, curve.Fr.e(1), "L Section", logger);
@@ -8829,6 +8932,255 @@ async function exportSolidityVerifier(zKeyName, templates, logger) {
     along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
 */
 
+async function zkeyExtract(zkeyFullName, v2paramsName, logger) {
+    const {fd: fdOld, sections} = await readBinFile(zkeyFullName, "zkey", 2);
+    const zkey = await readHeader$1(fdOld, sections);
+    if (zkey.protocol !== "groth16") throw new Error("zkey is not groth16");
+
+    const fdNew = await createBinFile(v2paramsName, MAGIC_P2U, 1, 5);
+
+    await copySection(fdOld, sections, fdNew, 1);
+    await copySection(fdOld, sections, fdNew, 2);
+    await copySection(fdOld, sections, fdNew, 8);
+    await copySection(fdOld, sections, fdNew, 9);
+    await copySection(fdOld, sections, fdNew, 10);
+
+    await fdOld.close();
+    await fdNew.close();
+
+    if (logger) logger.info(`Extracted p2u: ${v2paramsName}`);
+}
+
+/*
+    Copyright 2018 0KIMS association.
+
+    This file is part of snarkJS.
+
+    snarkJS is a free software: you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    snarkJS is distributed in the hope that it will be useful, but WITHOUT
+    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
+    License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+async function zkeyAssemble(baseZkeyName, v2paramsName, outZkeyName, logger) {
+    const {fd: fdBase, sections: baseSections} = await readBinFile(baseZkeyName, "zkey", 2);
+    const {fd: fdParts, sections: partsSections} = await readBinFile(v2paramsName, MAGIC_P2U, 2);
+    const fdOut = await createBinFile(outZkeyName, "zkey", 1, 10);
+
+    // From v2params: §1 (protocol), §2 (header with updated delta)
+    await copySection(fdParts, partsSections, fdOut, 1);
+    await copySection(fdParts, partsSections, fdOut, 2);
+
+    // From base: §3-7 (IC, Coeffs, A, B1, B2) -- frozen since g16s
+    await copySection(fdBase, baseSections, fdOut, 3);
+    await copySection(fdBase, baseSections, fdOut, 4);
+    await copySection(fdBase, baseSections, fdOut, 5);
+    await copySection(fdBase, baseSections, fdOut, 6);
+    await copySection(fdBase, baseSections, fdOut, 7);
+
+    // From v2params: §8 (L), §9 (H), §10 (MPC params)
+    await copySection(fdParts, partsSections, fdOut, 8);
+    await copySection(fdParts, partsSections, fdOut, 9);
+    await copySection(fdParts, partsSections, fdOut, 10);
+
+    await fdBase.close();
+    await fdParts.close();
+    await fdOut.close();
+
+    if (logger) logger.info(`Assembled zkey: ${outZkeyName}`);
+}
+
+/*
+    Copyright 2018 0KIMS association.
+
+    This file is part of snarkJS.
+
+    snarkJS is a free software: you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    snarkJS is distributed in the hope that it will be useful, but WITHOUT
+    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
+    License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+async function v2paramsCompress(p2uName, p2cName, logger) {
+    const {fd: fdOld, sections} = await readBinFile(p2uName, MAGIC_P2U, 2);
+    const zkey = await readHeader$1(fdOld, sections);
+    if (zkey.protocol !== "groth16") throw new Error("zkey is not groth16");
+
+    const curve = await getCurveFromQ(zkey.q);
+    const sG = curve.G1.F.n8 * 2;
+
+    const fdNew = await createBinFile(p2cName, MAGIC_P2C, 1, 5);
+
+    await copySection(fdOld, sections, fdNew, 1);
+    await copySection(fdOld, sections, fdNew, 2);
+
+    for (const id of [8, 9]) {
+        const size = sections[id][0].size;
+        if (size % sG !== 0) throw new Error(`section ${id} size not a multiple of sG`);
+        const nPoints = size / sG;
+
+        await startReadUniqueSection(fdOld, sections, id);
+        await startWriteSection(fdNew, id);
+        const buffLEM = await fdOld.read(nPoints * sG);
+        const buffC = await curve.G1.batchLEMtoC(buffLEM);
+        await fdNew.write(buffC);
+        await endReadSection(fdOld);
+        await endWriteSection(fdNew);
+        if (logger) logger.info(`Compressed §${id}: ${nPoints} points`);
+    }
+
+    await copySection(fdOld, sections, fdNew, 10);
+
+    await fdOld.close();
+    await fdNew.close();
+    await curve.terminate();
+    if (logger) logger.info(`Compressed p2u -> p2c: ${p2cName}`);
+}
+
+/*
+    Copyright 2018 0KIMS association.
+
+    This file is part of snarkJS.
+
+    snarkJS is a free software: you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    snarkJS is distributed in the hope that it will be useful, but WITHOUT
+    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
+    License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+async function v2paramsDecompress(p2cName, p2uName, logger) {
+    const {fd: fdOld, sections} = await readBinFile(p2cName, MAGIC_P2C, 2);
+    const zkey = await readHeader$1(fdOld, sections);
+    if (zkey.protocol !== "groth16") throw new Error("zkey is not groth16");
+
+    const curve = await getCurveFromQ(zkey.q);
+    const sGc = curve.G1.F.n8;
+
+    const fdNew = await createBinFile(p2uName, MAGIC_P2U, 1, 5);
+
+    await copySection(fdOld, sections, fdNew, 1);
+    await copySection(fdOld, sections, fdNew, 2);
+
+    for (const id of [8, 9]) {
+        const size = sections[id][0].size;
+        if (size % sGc !== 0) throw new Error(`section ${id} size not a multiple of sGc`);
+        const nPoints = size / sGc;
+
+        await startReadUniqueSection(fdOld, sections, id);
+        await startWriteSection(fdNew, id);
+        const buffC = await fdOld.read(nPoints * sGc);
+        const buffLEM = await curve.G1.batchCtoLEM(buffC);
+        await fdNew.write(buffLEM);
+        await endReadSection(fdOld);
+        await endWriteSection(fdNew);
+        if (logger) logger.info(`Decompressed §${id}: ${nPoints} points`);
+    }
+
+    await copySection(fdOld, sections, fdNew, 10);
+
+    await fdOld.close();
+    await fdNew.close();
+    await curve.terminate();
+    if (logger) logger.info(`Decompressed p2c -> p2u: ${p2uName}`);
+}
+
+/*
+    Copyright 2018 0KIMS association.
+
+    This file is part of snarkJS.
+
+    snarkJS is a free software: you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    snarkJS is distributed in the hope that it will be useful, but WITHOUT
+    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
+    License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+async function readContributionHashes(v2paramsName) {
+    const magic = await detectV2Magic(v2paramsName);
+    const {fd, sections} = await readBinFile(v2paramsName, magic, 2);
+    let curve;
+    try {
+        const zkey = await readHeader$1(fd, sections);
+        if (zkey.protocol !== "groth16") throw new Error("zkey is not groth16");
+
+        curve = await getCurveFromQ(zkey.q);
+        const mpcParams = await readMPCParams(fd, curve, sections);
+
+        return mpcParams.contributions.map((c) => {
+            const contributionHasher = blake2b.create({ dkLen: 64 });
+            hashPubKey(contributionHasher, curve, c);
+            return contributionHasher.digest();
+        });
+    } finally {
+        await fd.close();
+        if (curve) await curve.terminate();
+    }
+}
+
+async function v2paramsExtends(formerV2Params, laterV2Params) {
+    const formerHashes = await readContributionHashes(formerV2Params);
+    const laterHashes = await readContributionHashes(laterV2Params);
+
+    if (laterHashes.length !== formerHashes.length + 1) return false;
+
+    for (let i=0; i<formerHashes.length; i++) {
+        if (!hashIsEqual(formerHashes[i], laterHashes[i])) return false;
+    }
+
+    return true;
+}
+
+/*
+    Copyright 2018 0KIMS association.
+
+    This file is part of snarkJS.
+
+    snarkJS is a free software: you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    snarkJS is distributed in the hope that it will be useful, but WITHOUT
+    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
+    License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
+*/
+
 var zkey = /*#__PURE__*/Object.freeze({
     __proto__: null,
     newZKey: newZKey,
@@ -8841,7 +9193,12 @@ var zkey = /*#__PURE__*/Object.freeze({
     exportJson: zkeyExportJson,
     bellmanContribute: bellmanContribute,
     exportVerificationKey: zkeyExportVerificationKey,
-    exportSolidityVerifier: exportSolidityVerifier
+    exportSolidityVerifier: exportSolidityVerifier,
+    extract: zkeyExtract,
+    assemble: zkeyAssemble,
+    compressV2Params: v2paramsCompress,
+    decompressV2Params: v2paramsDecompress,
+    v2paramsExtends: v2paramsExtends
 });
 
 /*
@@ -9431,8 +9788,17 @@ class Proof {
     }
 }
 
-// SHA3 (keccak) is based on a new design: basically, the internal state is bigger than output size.
-// It's called a sponge function.
+/**
+ * SHA3 (keccak) hash function, based on a new "Sponge function" design.
+ * Different from older hashes, the internal state is bigger than output size.
+ *
+ * Check out [FIPS-202](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf),
+ * [Website](https://keccak.team/keccak.html),
+ * [the differences between SHA-3 and Keccak](https://crypto.stackexchange.com/questions/15727/what-are-the-key-differences-between-the-draft-sha-3-standard-and-the-keccak-sub).
+ *
+ * Check out `sha3-addons` module for cSHAKE, k12, and others.
+ * @module
+ */
 // Various per round constants calculations
 const SHA3_PI = [];
 const SHA3_ROTL = [];
@@ -9462,7 +9828,7 @@ const [SHA3_IOTA_H, SHA3_IOTA_L] = /* @__PURE__ */ split(_SHA3_IOTA, true);
 // Left rotation (without 0, 32, 64)
 const rotlH = (h, l, s) => (s > 32 ? rotlBH(h, l, s) : rotlSH(h, l, s));
 const rotlL = (h, l, s) => (s > 32 ? rotlBL(h, l, s) : rotlSL(h, l, s));
-// Same as keccakf1600, but allows to skip some rounds
+/** `keccakf1600` internal function, additionally allows to adjust round count. */
 function keccakP(s, rounds = 24) {
     const B = new Uint32Array(5 * 2);
     // NOTE: all indices are x2 since we store state as u32 instead of u64 (bigints to slow in js)
@@ -9508,6 +9874,7 @@ function keccakP(s, rounds = 24) {
     }
     B.fill(0);
 }
+/** Keccak sponge function. */
 class Keccak extends Hash {
     // NOTE: we accept arguments in bytes instead of bits here.
     constructor(blockLen, suffix, outputLen, enableXOF = false, rounds = 24) {
@@ -9522,8 +9889,9 @@ class Keccak extends Hash {
         this.finished = false;
         this.destroyed = false;
         // Can be passed from user as dkLen
-        number(outputLen);
+        anumber(outputLen);
         // 1600 = 5x5 matrix of 64bit.  1600 bits === 200 bytes
+        // 0 < blockLen < 200
         if (0 >= this.blockLen || this.blockLen >= 200)
             throw new Error('Sha3 supports only keccak-f1600 function');
         this.state = new Uint8Array(200);
@@ -9539,7 +9907,7 @@ class Keccak extends Hash {
         this.pos = 0;
     }
     update(data) {
-        exists(this);
+        aexists(this);
         const { blockLen, state } = this;
         data = toBytes(data);
         const len = data.length;
@@ -9565,8 +9933,8 @@ class Keccak extends Hash {
         this.keccak();
     }
     writeInto(out) {
-        exists(this, false);
-        bytes(out);
+        aexists(this, false);
+        abytes(out);
         this.finish();
         const bufferOut = this.state;
         const { blockLen } = this;
@@ -9587,11 +9955,11 @@ class Keccak extends Hash {
         return this.writeInto(out);
     }
     xof(bytes) {
-        number(bytes);
+        anumber(bytes);
         return this.xofInto(new Uint8Array(bytes));
     }
     digestInto(out) {
-        output(out, this);
+        aoutput(out, this);
         if (this.finished)
             throw new Error('digest() was already called');
         this.writeInto(out);
@@ -9622,10 +9990,7 @@ class Keccak extends Hash {
     }
 }
 const gen = (suffix, blockLen, outputLen) => wrapConstructor(() => new Keccak(blockLen, suffix, outputLen));
-/**
- * keccak-256 hash function. Different from SHA3-256.
- * @param message - that would be hashed
- */
+/** keccak-256 hash function. Different from SHA3-256. */
 const keccak_256 = /* @__PURE__ */ gen(0x01, 136, 256 / 8);
 
 /*

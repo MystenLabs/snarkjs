@@ -33,3 +33,4 @@ export {default as extract} from "./zkey_extract.js";
 export {default as assemble} from "./zkey_assemble.js";
 export {default as compressV2Params} from "./zkey_compress_v2params.js";
 export {default as decompressV2Params} from "./zkey_decompress_v2params.js";
+export {default as v2paramsExtends} from "./zkey_v2params_extends.js";

@@ -257,6 +257,13 @@ const commands = [
         action: zkeyDecompressV2Params
     },
     {
+        cmd: "zkey v2params extends <former.v2params> <later.v2params>",
+        description: "Check that a v2params file extends another by exactly one contribution",
+        alias: ["zkv2extends"],
+        options: "-verbose|v",
+        action: zkeyV2ParamsExtends
+    },
+    {
         cmd: "zkey export verificationkey [circuit_final.zkey] [verification_key.json]",
         description: "Exports a verification key",
         alias: ["zkev"],
@@ -1118,6 +1125,15 @@ async function zkeyDecompressV2Params(params, options) {
     if (options.verbose) Logger.setLogLevel("DEBUG");
     await zkey.decompressV2Params(inName, outName, logger);
     return 0;
+}
+
+// zkey v2params extends <former.v2params> <later.v2params>
+async function zkeyV2ParamsExtends(params, options) {
+    const formerName = params[0];
+    const laterName = params[1];
+    if (options.verbose) Logger.setLogLevel("DEBUG");
+    const res = await zkey.v2paramsExtends(formerName, laterName, logger);
+    return res === true ? 0 : 1;
 }
 
 // zkey beacon <circuit_old.zkey> <circuit_new.zkey> <beaconHash(Hex)> <numIterationsExp>

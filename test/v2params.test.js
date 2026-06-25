@@ -72,4 +72,40 @@ describe("v2params split-contribute pipeline", function () {
         const ok = await snarkjs.zKey.verifyFromInit(zkey_0, ptau_final, zkey_full);
         assert(ok, "verifyFromInit failed");
     });
+
+    it("v2paramsExtends checks exactly-one contribution prefix extension", async () => {
+        const v2u_0 = {type: "mem"};
+        await snarkjs.zKey.extract(zkey_0, v2u_0);
+
+        const v2u_1 = {type: "mem"};
+        const v2u_2 = {type: "mem"};
+        await snarkjs.zKey.contribute(v2u_0, v2u_1, "C1", "entropy-1");
+        await snarkjs.zKey.contribute(v2u_1, v2u_2, "C2", "entropy-2");
+
+        const p2c_0 = {type: "mem"};
+        const p2c_1 = {type: "mem"};
+        const p2c_2 = {type: "mem"};
+        await snarkjs.zKey.compressV2Params(v2u_0, p2c_0);
+        await snarkjs.zKey.compressV2Params(v2u_1, p2c_1);
+        await snarkjs.zKey.compressV2Params(v2u_2, p2c_2);
+
+        assert.strictEqual(await snarkjs.zKey.v2paramsExtends(p2c_1, p2c_2), true);
+        assert.strictEqual(await snarkjs.zKey.v2paramsExtends(v2u_1, v2u_2), true);
+        assert.strictEqual(await snarkjs.zKey.v2paramsExtends(v2u_1, p2c_2), true);
+        assert.strictEqual(await snarkjs.zKey.v2paramsExtends(p2c_1, v2u_2), true);
+        assert.strictEqual(await snarkjs.zKey.v2paramsExtends(p2c_0, p2c_2), false);
+
+        const v2u_x1 = {type: "mem"};
+        const v2u_x2 = {type: "mem"};
+        await snarkjs.zKey.contribute(v2u_0, v2u_x1, "X1", "entropy-x1");
+        await snarkjs.zKey.contribute(v2u_x1, v2u_x2, "X2", "entropy-x2");
+
+        const p2c_x1 = {type: "mem"};
+        const p2c_x2 = {type: "mem"};
+        await snarkjs.zKey.compressV2Params(v2u_x1, p2c_x1);
+        await snarkjs.zKey.compressV2Params(v2u_x2, p2c_x2);
+
+        assert.strictEqual(await snarkjs.zKey.v2paramsExtends(p2c_1, p2c_x1), false);
+        assert.strictEqual(await snarkjs.zKey.v2paramsExtends(p2c_1, p2c_x2), false);
+    });
 });
