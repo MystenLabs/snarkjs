@@ -37,11 +37,13 @@ async function readContributionHashes(v2paramsName) {
         curve = await getCurve(zkey.q);
         const mpcParams = await zkeyUtils.readMPCParams(fd, curve, sections);
 
-        return mpcParams.contributions.map((c) => {
+        const hashes = mpcParams.contributions.map((c) => {
             const contributionHasher = blake2b.create({ dkLen: 64 });
             hashPubKey(contributionHasher, curve, c);
             return contributionHasher.digest();
         });
+
+        return { csHash: mpcParams.csHash, hashes };
     } finally {
         await fd.close();
         if (curve) await curve.terminate();
@@ -49,13 +51,18 @@ async function readContributionHashes(v2paramsName) {
 }
 
 export default async function v2paramsExtends(formerV2Params, laterV2Params) {
-    const formerHashes = await readContributionHashes(formerV2Params);
-    const laterHashes = await readContributionHashes(laterV2Params);
+    const former = await readContributionHashes(formerV2Params);
+    const later = await readContributionHashes(laterV2Params);
 
-    if (laterHashes.length !== formerHashes.length + 1) return false;
+    // Bind both files to the same circuit. Without this, a former with 0
+    // contributions would skip the prefix loop below and accept any
+    // single-contribution later file, even from an unrelated circuit.
+    if (!misc.hashIsEqual(former.csHash, later.csHash)) return false;
 
-    for (let i=0; i<formerHashes.length; i++) {
-        if (!misc.hashIsEqual(formerHashes[i], laterHashes[i])) return false;
+    if (later.hashes.length !== former.hashes.length + 1) return false;
+
+    for (let i=0; i<former.hashes.length; i++) {
+        if (!misc.hashIsEqual(former.hashes[i], later.hashes[i])) return false;
     }
 
     return true;
