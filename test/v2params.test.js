@@ -108,4 +108,22 @@ describe("v2params split-contribute pipeline", function () {
         assert.strictEqual(await snarkjs.zKey.v2paramsExtends(p2c_1, p2c_x1), false);
         assert.strictEqual(await snarkjs.zKey.v2paramsExtends(p2c_1, p2c_x2), false);
     });
+
+    it("v2paramsExtends rejects a different circuit in the 0-contribution case", async () => {
+        // former has 0 contributions, so the prefix loop runs zero iterations.
+        // Only the csHash check can catch a later file from a different circuit.
+        const zkey_b = {type: "mem"};
+        await snarkjs.zKey.newZKey(path.join("test", "circuit", "circuit.r1cs"), ptau_final, zkey_b);
+
+        const a_0 = {type: "mem"};
+        await snarkjs.zKey.extract(zkey_0, a_0);
+
+        const b_0 = {type: "mem"};
+        const b_1 = {type: "mem"};
+        await snarkjs.zKey.extract(zkey_b, b_0);
+        await snarkjs.zKey.contribute(b_0, b_1, "B1", "entropy-b1");
+
+        // exactly-one-more contribution, but a different circuit: must be false.
+        assert.strictEqual(await snarkjs.zKey.v2paramsExtends(a_0, b_1), false);
+    });
 });
