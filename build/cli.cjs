@@ -5003,9 +5003,76 @@ async function phase2verifyFromR1cs(r1csFileName, pTauFileName, zkeyFileName, lo
     along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
 */
 
-async function phase2contribute(zkeyNameOld, zkeyNameNew, name, entropy, logger) {
+const MAGIC_P2U = "p2u\0";   // phase-2 params, uncompressed (LEM)
+const MAGIC_P2C = "p2c\0";   // phase-2 params, compressed
 
-    const {fd: fdOld, sections: sections} = await binFileUtils__namespace.readBinFile(zkeyNameOld, "zkey", 2);
+// Read the first 4 bytes of a file (or mem object) as a string, without
+// disturbing any caller-held position. Returns the raw 4-char magic; the
+// caller is responsible for interpreting it.
+async function readMagic(fileNameOrFd) {
+    let fd, owns = false;
+    if (typeof fileNameOrFd === "string") {
+        fd = await fastFile__namespace.readExisting(fileNameOrFd);
+        owns = true;
+    } else if (fileNameOrFd && fileNameOrFd.type === "mem") {
+        const d = fileNameOrFd.data;
+        if (!d || d.length < 4) throw new Error("file too short");
+        return String.fromCharCode(d[0], d[1], d[2], d[3]);
+    } else {
+        fd = fileNameOrFd;
+    }
+    try {
+        const savedPos = fd.pos;
+        fd.pos = 0;
+        const b = await fd.read(4);
+        fd.pos = savedPos;
+        return String.fromCharCode(b[0], b[1], b[2], b[3]);
+    } finally {
+        if (owns) await fd.close();
+    }
+}
+
+// Like readMagic but enforces a v2params magic (p2u or p2c). Throws on
+// anything else, including a full zkey.
+async function detectV2Magic(fileNameOrFd) {
+    const s = await readMagic(fileNameOrFd);
+    if (s === MAGIC_P2U || s === MAGIC_P2C) return s;
+    const preview = s.replace(/\0+$/, "");
+    throw new Error(`expected p2u or p2c magic, got "${preview}"`);
+}
+
+/*
+    Copyright 2018 0KIMS association.
+
+    This file is part of snarkJS.
+
+    snarkJS is a free software: you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    snarkJS is distributed in the hope that it will be useful, but WITHOUT
+    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
+    License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+const MAGIC_ZKEY = "zkey";
+
+async function phase2contribute(oldName, newName, name, entropy, logger) {
+
+    const magic = await readMagic(oldName);
+    if (magic !== MAGIC_ZKEY && magic !== MAGIC_P2U) {
+        const preview = magic.replace(/\0+$/, "");
+        throw new Error(`expected "${MAGIC_ZKEY}" or "p2u" magic, got "${preview}"`);
+    }
+    const isFullZkey = magic === MAGIC_ZKEY;
+    const nSections = isFullZkey ? 10 : 5;
+
+    const {fd: fdOld, sections: sections} = await binFileUtils__namespace.readBinFile(oldName, magic, 2);
     const zkey = await readHeader$1(fdOld, sections);
     if (zkey.protocol != "groth16") {
         throw new Error("zkey file is not groth16");
@@ -5015,7 +5082,7 @@ async function phase2contribute(zkeyNameOld, zkeyNameNew, name, entropy, logger)
 
     const mpcParams = await readMPCParams(fdOld, curve, sections);
 
-    const fdNew = await binFileUtils__namespace.createBinFile(zkeyNameNew, "zkey", 1, 10);
+    const fdNew = await binFileUtils__namespace.createBinFile(newName, magic, 1, nSections);
 
 
     const rng = await getRandomRng(entropy);
@@ -5049,20 +5116,16 @@ async function phase2contribute(zkeyNameOld, zkeyNameNew, name, entropy, logger)
 
     await writeHeader(fdNew, zkey);
 
-    // IC
-    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 3);
-
-    // Coeffs (Keep original)
-    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 4);
-
-    // A Section
-    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 5);
-
-    // B1 Section
-    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 6);
-
-    // B2 Section
-    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 7);
+    if (isFullZkey) {
+        // IC, Coeffs, A, B1, B2 -- frozen since g16s; copy verbatim.
+        await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 3);
+        await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 4);
+        await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 5);
+        await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 6);
+        await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 7);
+    }
+    // For p2u: sections 3-7 are absent; `zkey assemble` reinjects them
+    // from the base zkey at the end of the ceremony.
 
     const invDelta = curve.Fr.inv(curContribution.delta.prvKey);
     await applyKeyToSection(fdOld, sections, fdNew, 8, curve, "G1", invDelta, curve.Fr.e(1), "L Section", logger);
@@ -5601,6 +5664,262 @@ async function exportSolidityVerifier(zKeyName, templates, logger) {
     let template = templates[verificationKey.protocol];
 
     return ejs__default["default"].render(template, verificationKey);
+}
+
+/*
+    Copyright 2018 0KIMS association.
+
+    This file is part of snarkJS.
+
+    snarkJS is a free software: you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    snarkJS is distributed in the hope that it will be useful, but WITHOUT
+    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
+    License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+async function zkeyExtract$1(zkeyFullName, v2paramsName, logger) {
+    const {fd: fdOld, sections} = await binFileUtils__namespace.readBinFile(zkeyFullName, "zkey", 2);
+    const zkey = await readHeader$1(fdOld, sections);
+    if (zkey.protocol !== "groth16") throw new Error("zkey is not groth16");
+
+    const fdNew = await binFileUtils__namespace.createBinFile(v2paramsName, MAGIC_P2U, 1, 5);
+
+    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 1);
+    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 2);
+    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 8);
+    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 9);
+    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 10);
+
+    await fdOld.close();
+    await fdNew.close();
+
+    if (logger) logger.info(`Extracted p2u: ${v2paramsName}`);
+}
+
+/*
+    Copyright 2018 0KIMS association.
+
+    This file is part of snarkJS.
+
+    snarkJS is a free software: you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    snarkJS is distributed in the hope that it will be useful, but WITHOUT
+    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
+    License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+async function zkeyAssemble$1(baseZkeyName, v2paramsName, outZkeyName, logger) {
+    const {fd: fdBase, sections: baseSections} = await binFileUtils__namespace.readBinFile(baseZkeyName, "zkey", 2);
+    const {fd: fdParts, sections: partsSections} = await binFileUtils__namespace.readBinFile(v2paramsName, MAGIC_P2U, 2);
+    const fdOut = await binFileUtils__namespace.createBinFile(outZkeyName, "zkey", 1, 10);
+
+    // From v2params: §1 (protocol), §2 (header with updated delta)
+    await binFileUtils__namespace.copySection(fdParts, partsSections, fdOut, 1);
+    await binFileUtils__namespace.copySection(fdParts, partsSections, fdOut, 2);
+
+    // From base: §3-7 (IC, Coeffs, A, B1, B2) -- frozen since g16s
+    await binFileUtils__namespace.copySection(fdBase, baseSections, fdOut, 3);
+    await binFileUtils__namespace.copySection(fdBase, baseSections, fdOut, 4);
+    await binFileUtils__namespace.copySection(fdBase, baseSections, fdOut, 5);
+    await binFileUtils__namespace.copySection(fdBase, baseSections, fdOut, 6);
+    await binFileUtils__namespace.copySection(fdBase, baseSections, fdOut, 7);
+
+    // From v2params: §8 (L), §9 (H), §10 (MPC params)
+    await binFileUtils__namespace.copySection(fdParts, partsSections, fdOut, 8);
+    await binFileUtils__namespace.copySection(fdParts, partsSections, fdOut, 9);
+    await binFileUtils__namespace.copySection(fdParts, partsSections, fdOut, 10);
+
+    await fdBase.close();
+    await fdParts.close();
+    await fdOut.close();
+
+    if (logger) logger.info(`Assembled zkey: ${outZkeyName}`);
+}
+
+/*
+    Copyright 2018 0KIMS association.
+
+    This file is part of snarkJS.
+
+    snarkJS is a free software: you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    snarkJS is distributed in the hope that it will be useful, but WITHOUT
+    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
+    License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+async function v2paramsCompress(p2uName, p2cName, logger) {
+    const {fd: fdOld, sections} = await binFileUtils__namespace.readBinFile(p2uName, MAGIC_P2U, 2);
+    const zkey = await readHeader$1(fdOld, sections);
+    if (zkey.protocol !== "groth16") throw new Error("zkey is not groth16");
+
+    const curve = await getCurveFromQ(zkey.q);
+    const sG = curve.G1.F.n8 * 2;
+
+    const fdNew = await binFileUtils__namespace.createBinFile(p2cName, MAGIC_P2C, 1, 5);
+
+    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 1);
+    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 2);
+
+    for (const id of [8, 9]) {
+        const size = sections[id][0].size;
+        if (size % sG !== 0) throw new Error(`section ${id} size not a multiple of sG`);
+        const nPoints = size / sG;
+
+        await binFileUtils__namespace.startReadUniqueSection(fdOld, sections, id);
+        await binFileUtils__namespace.startWriteSection(fdNew, id);
+        const buffLEM = await fdOld.read(nPoints * sG);
+        const buffC = await curve.G1.batchLEMtoC(buffLEM);
+        await fdNew.write(buffC);
+        await binFileUtils__namespace.endReadSection(fdOld);
+        await binFileUtils__namespace.endWriteSection(fdNew);
+        if (logger) logger.info(`Compressed §${id}: ${nPoints} points`);
+    }
+
+    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 10);
+
+    await fdOld.close();
+    await fdNew.close();
+    await curve.terminate();
+    if (logger) logger.info(`Compressed p2u -> p2c: ${p2cName}`);
+}
+
+/*
+    Copyright 2018 0KIMS association.
+
+    This file is part of snarkJS.
+
+    snarkJS is a free software: you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    snarkJS is distributed in the hope that it will be useful, but WITHOUT
+    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
+    License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+async function v2paramsDecompress(p2cName, p2uName, logger) {
+    const {fd: fdOld, sections} = await binFileUtils__namespace.readBinFile(p2cName, MAGIC_P2C, 2);
+    const zkey = await readHeader$1(fdOld, sections);
+    if (zkey.protocol !== "groth16") throw new Error("zkey is not groth16");
+
+    const curve = await getCurveFromQ(zkey.q);
+    const sGc = curve.G1.F.n8;
+
+    const fdNew = await binFileUtils__namespace.createBinFile(p2uName, MAGIC_P2U, 1, 5);
+
+    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 1);
+    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 2);
+
+    for (const id of [8, 9]) {
+        const size = sections[id][0].size;
+        if (size % sGc !== 0) throw new Error(`section ${id} size not a multiple of sGc`);
+        const nPoints = size / sGc;
+
+        await binFileUtils__namespace.startReadUniqueSection(fdOld, sections, id);
+        await binFileUtils__namespace.startWriteSection(fdNew, id);
+        const buffC = await fdOld.read(nPoints * sGc);
+        const buffLEM = await curve.G1.batchCtoLEM(buffC);
+        await fdNew.write(buffLEM);
+        await binFileUtils__namespace.endReadSection(fdOld);
+        await binFileUtils__namespace.endWriteSection(fdNew);
+        if (logger) logger.info(`Decompressed §${id}: ${nPoints} points`);
+    }
+
+    await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 10);
+
+    await fdOld.close();
+    await fdNew.close();
+    await curve.terminate();
+    if (logger) logger.info(`Decompressed p2c -> p2u: ${p2uName}`);
+}
+
+/*
+    Copyright 2018 0KIMS association.
+
+    This file is part of snarkJS.
+
+    snarkJS is a free software: you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    snarkJS is distributed in the hope that it will be useful, but WITHOUT
+    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
+    License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+async function readContributionHashes(v2paramsName) {
+    const magic = await detectV2Magic(v2paramsName);
+    const {fd, sections} = await binFileUtils__namespace.readBinFile(v2paramsName, magic, 2);
+    let curve;
+    try {
+        const zkey = await readHeader$1(fd, sections);
+        if (zkey.protocol !== "groth16") throw new Error("zkey is not groth16");
+
+        curve = await getCurveFromQ(zkey.q);
+        const mpcParams = await readMPCParams(fd, curve, sections);
+
+        const hashes = mpcParams.contributions.map((c) => {
+            const contributionHasher = blake2b.blake2b.create({ dkLen: 64 });
+            hashPubKey(contributionHasher, curve, c);
+            return contributionHasher.digest();
+        });
+
+        return { csHash: mpcParams.csHash, hashes };
+    } finally {
+        await fd.close();
+        if (curve) await curve.terminate();
+    }
+}
+
+async function v2paramsExtends(formerV2Params, laterV2Params) {
+    const former = await readContributionHashes(formerV2Params);
+    const later = await readContributionHashes(laterV2Params);
+
+    // Bind both files to the same circuit. Without this, a former with 0
+    // contributions would skip the prefix loop below and accept any
+    // single-contribution later file, even from an unrelated circuit.
+    if (!hashIsEqual(former.csHash, later.csHash)) return false;
+
+    if (later.hashes.length !== former.hashes.length + 1) return false;
+
+    for (let i=0; i<former.hashes.length; i++) {
+        if (!hashIsEqual(former.hashes[i], later.hashes[i])) return false;
+    }
+
+    return true;
 }
 
 /*
@@ -12663,8 +12982,8 @@ const commands = [
         action: wtnsCheck
     },
     {
-        cmd: "zkey contribute <circuit_old.zkey> <circuit_new.zkey>",
-        description: "creates a zkey file with a new contribution",
+        cmd: "zkey contribute <circuit_old> <circuit_new>",
+        description: "creates a new contribution. Auto-detects input: \"zkey\" magic = full zkey, \"p2u\" magic = v2params (LEM). Output mirrors input.",
         alias: ["zkc"],
         options: "-verbose|v  -entropy|e -name|n",
         action: zkeyContribute
@@ -12710,6 +13029,41 @@ const commands = [
         alias: ["zkvi"],
         options: "-verbose|v",
         action: zkeyVerifyFromInit
+    },
+    {
+        cmd: "zkey extract <circuit.zkey> <circuit.v2params>",
+        description: "Extract a p2u v2params file (sections 1, 2, 8, 9, 10). For the compressed wire format, pipe through `zkey compress v2params`.",
+        alias: ["zkex"],
+        options: "-verbose|v",
+        action: zkeyExtract
+    },
+    {
+        cmd: "zkey assemble <base.zkey> <circuit.v2params> <circuit_out.zkey>",
+        description: "Assemble a full zkey by combining a base zkey (sections 3-7) with v2params (sections 1, 2, 8, 9, 10)",
+        alias: ["zkas"],
+        options: "-verbose|v",
+        action: zkeyAssemble
+    },
+    {
+        cmd: "zkey compress v2params <circuit_p2u.v2params> <circuit_p2c.v2params>",
+        description: "Convert a v2params file from p2u (LEM uncompressed) to p2c (compressed, ~50% smaller)",
+        alias: ["zkcmp"],
+        options: "-verbose|v",
+        action: zkeyCompressV2Params
+    },
+    {
+        cmd: "zkey decompress v2params <circuit_p2c.v2params> <circuit_p2u.v2params>",
+        description: "Convert a v2params file from p2c (compressed) to p2u (LEM uncompressed); also validates G1 points on-curve",
+        alias: ["zkdec"],
+        options: "-verbose|v",
+        action: zkeyDecompressV2Params
+    },
+    {
+        cmd: "zkey v2params extends <former.v2params> <later.v2params>",
+        description: "Check that a v2params file extends another by exactly one contribution",
+        alias: ["zkv2extends"],
+        options: "-verbose|v",
+        action: zkeyV2ParamsExtends
     },
     {
         cmd: "zkey export verificationkey [circuit_final.zkey] [verification_key.json]",
@@ -13536,6 +13890,52 @@ async function zkeyContribute(params, options) {
     await phase2contribute(zkeyOldName, zkeyNewName, options.name, options.entropy, logger);
 
     return 0;
+}
+
+// zkey extract <circuit.zkey> <circuit.v2params>
+async function zkeyExtract(params, options) {
+    const zkeyName = params[0];
+    const v2paramsName = params[1];
+    if (options.verbose) Logger__default["default"].setLogLevel("DEBUG");
+    await zkeyExtract$1(zkeyName, v2paramsName, logger);
+    return 0;
+}
+
+// zkey assemble <base.zkey> <circuit.v2params> <circuit_out.zkey>
+async function zkeyAssemble(params, options) {
+    const baseName = params[0];
+    const v2paramsName = params[1];
+    const outName = params[2];
+    if (options.verbose) Logger__default["default"].setLogLevel("DEBUG");
+    await zkeyAssemble$1(baseName, v2paramsName, outName, logger);
+    return 0;
+}
+
+// zkey compress v2params <in.v2params> <out.v2params>
+async function zkeyCompressV2Params(params, options) {
+    const inName = params[0];
+    const outName = params[1];
+    if (options.verbose) Logger__default["default"].setLogLevel("DEBUG");
+    await v2paramsCompress(inName, outName, logger);
+    return 0;
+}
+
+// zkey decompress v2params <in.v2params> <out.v2params>
+async function zkeyDecompressV2Params(params, options) {
+    const inName = params[0];
+    const outName = params[1];
+    if (options.verbose) Logger__default["default"].setLogLevel("DEBUG");
+    await v2paramsDecompress(inName, outName, logger);
+    return 0;
+}
+
+// zkey v2params extends <former.v2params> <later.v2params>
+async function zkeyV2ParamsExtends(params, options) {
+    const formerName = params[0];
+    const laterName = params[1];
+    if (options.verbose) Logger__default["default"].setLogLevel("DEBUG");
+    const res = await v2paramsExtends(formerName, laterName);
+    return res === true ? 0 : 1;
 }
 
 // zkey beacon <circuit_old.zkey> <circuit_new.zkey> <beaconHash(Hex)> <numIterationsExp>
