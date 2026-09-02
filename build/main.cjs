@@ -3040,8 +3040,7 @@ async function beacon$1(oldPtauFilename, newPTauFilename, name,  beaconHashStr,n
     const {fd: fdOld, sections} = await binFileUtils__namespace.readBinFile(oldPtauFilename, "ptau", 1);
     const {curve, power, ceremonyPower} = await readPTauHeader(fdOld, sections);
     if (power != ceremonyPower) {
-        if (logger) logger.error("This file has been reduced. You cannot contribute into a reduced file.");
-        return false;
+        if (logger) logger.warn("This file has been reduced; applying the beacon to the reduced accumulator.");
     }
     if (sections[12]) {
         if (logger) logger.warn("Contributing into a file that has phase2 calculated. You will have to prepare phase2 again.");
@@ -3068,7 +3067,7 @@ async function beacon$1(oldPtauFilename, newPTauFilename, name,  beaconHashStr,n
     responseHasher.update(lastChallengeHash);
 
     const fdNew = await binFileUtils__namespace.createBinFile(newPTauFilename, "ptau", 1, 7);
-    await writePTauHeader(fdNew, curve, power);
+    await writePTauHeader(fdNew, curve, power, ceremonyPower);
 
     const startSections = [];
 
@@ -3378,10 +3377,10 @@ async function contribute(oldPtauFilename, newPTauFilename, name, entropy, logge
 async function preparePhase2(oldPtauFilename, newPTauFilename, logger) {
 
     const {fd: fdOld, sections} = await binFileUtils__namespace.readBinFile(oldPtauFilename, "ptau", 1);
-    const {curve, power} = await readPTauHeader(fdOld, sections);
+    const {curve, power, ceremonyPower} = await readPTauHeader(fdOld, sections);
 
     const fdNew = await binFileUtils__namespace.createBinFile(newPTauFilename, "ptau", 1, 11);
-    await writePTauHeader(fdNew, curve, power);
+    await writePTauHeader(fdNew, curve, power, ceremonyPower);
 
     await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 2);
     await binFileUtils__namespace.copySection(fdOld, sections, fdNew, 3);

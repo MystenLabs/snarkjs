@@ -45,8 +45,7 @@ export default async function beacon(oldPtauFilename, newPTauFilename, name,  be
     const {fd: fdOld, sections} = await binFileUtils.readBinFile(oldPtauFilename, "ptau", 1);
     const {curve, power, ceremonyPower} = await utils.readPTauHeader(fdOld, sections);
     if (power != ceremonyPower) {
-        if (logger) logger.error("This file has been reduced. You cannot contribute into a reduced file.");
-        return false;
+        if (logger) logger.warn("This file has been reduced; applying the beacon to the reduced accumulator.");
     }
     if (sections[12]) {
         if (logger) logger.warn("Contributing into a file that has phase2 calculated. You will have to prepare phase2 again.");
@@ -73,7 +72,7 @@ export default async function beacon(oldPtauFilename, newPTauFilename, name,  be
     responseHasher.update(lastChallengeHash);
 
     const fdNew = await binFileUtils.createBinFile(newPTauFilename, "ptau", 1, 7);
-    await utils.writePTauHeader(fdNew, curve, power);
+    await utils.writePTauHeader(fdNew, curve, power, ceremonyPower);
 
     const startSections = [];
 
