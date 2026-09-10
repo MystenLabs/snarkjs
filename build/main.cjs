@@ -5,10 +5,10 @@ Object.defineProperty(exports, '__esModule', { value: true });
 var binFileUtils = require('@iden3/binfileutils');
 var ffjavascript = require('ffjavascript');
 var blake2b = require('@noble/hashes/blake2b');
+var fastFile = require('fastfile');
 var utils = require('@noble/hashes/utils');
 var readline = require('readline');
 var crypto = require('crypto');
-var fastFile = require('fastfile');
 var circom_runtime = require('circom_runtime');
 var r1csfile = require('r1csfile');
 var ejs = require('ejs');
@@ -35,9 +35,9 @@ function _interopNamespace(e) {
 }
 
 var binFileUtils__namespace = /*#__PURE__*/_interopNamespace(binFileUtils);
+var fastFile__namespace = /*#__PURE__*/_interopNamespace(fastFile);
 var readline__default = /*#__PURE__*/_interopDefaultLegacy(readline);
 var crypto__default = /*#__PURE__*/_interopDefaultLegacy(crypto);
-var fastFile__namespace = /*#__PURE__*/_interopNamespace(fastFile);
 var ejs__default = /*#__PURE__*/_interopDefaultLegacy(ejs);
 
 const bls12381r$1 = ffjavascript.Scalar.e("73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001", 16);
@@ -98,6 +98,54 @@ var curves = /*#__PURE__*/Object.freeze({
     getCurveFromQ: getCurveFromQ,
     getCurveFromName: getCurveFromName
 });
+
+/*
+    Copyright 2018 0KIMS association.
+
+    This file is part of snarkJS.
+
+    snarkJS is a free software: you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    snarkJS is distributed in the hope that it will be useful, but WITHOUT
+    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
+    License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+const MAGIC_P2U = "p2u\0";   // phase-2 params, uncompressed (LEM)
+const MAGIC_P2C = "p2c\0";   // phase-2 params, compressed
+
+// Read the first 4 bytes of a file (or mem object) as a string, without
+// disturbing any caller-held position. Returns the raw 4-char magic; the
+// caller is responsible for interpreting it.
+async function readMagic(fileNameOrFd) {
+    let fd, owns = false;
+    if (typeof fileNameOrFd === "string") {
+        fd = await fastFile__namespace.readExisting(fileNameOrFd);
+        owns = true;
+    } else if (fileNameOrFd && fileNameOrFd.type === "mem") {
+        const d = fileNameOrFd.data;
+        if (!d || d.length < 4) throw new Error("file too short");
+        return String.fromCharCode(d[0], d[1], d[2], d[3]);
+    } else {
+        fd = fileNameOrFd;
+    }
+    try {
+        const savedPos = fd.pos;
+        fd.pos = 0;
+        const b = await fd.read(4);
+        fd.pos = savedPos;
+        return String.fromCharCode(b[0], b[1], b[2], b[3]);
+    } finally {
+        if (owns) await fd.close();
+    }
+}
 
 /*
     Copyright 2018 0KIMS association.
@@ -826,9 +874,14 @@ function hashContribution(curve, c) {
     return hasher.digest();
 }
 
-// Read section 10 of a groth16 zkey or v2params file. `magic` selects the
-// container: "zkey", or a v2params magic from detectV2Magic.
-async function readMPCParamsFile(fileName, magic) {
+// Read section 10 of a groth16 zkey or v2params file, the containers that
+// carry MPC params.
+async function readMPCParamsFile(fileName) {
+    const magic = await readMagic(fileName);
+    if (magic !== "zkey" && magic !== MAGIC_P2U && magic !== MAGIC_P2C) {
+        const preview = magic.replace(/\0+$/, "");
+        throw new Error(`expected zkey, p2u or p2c magic, got "${preview}"`);
+    }
     const {fd, sections} = await binFileUtils__namespace.readBinFile(fileName, magic, 2);
     let curve;
     try {
@@ -5784,63 +5837,6 @@ async function phase2verifyFromR1cs(r1csFileName, pTauFileName, zkeyFileName, lo
     along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
 */
 
-const MAGIC_P2U = "p2u\0";   // phase-2 params, uncompressed (LEM)
-const MAGIC_P2C = "p2c\0";   // phase-2 params, compressed
-
-// Read the first 4 bytes of a file (or mem object) as a string, without
-// disturbing any caller-held position. Returns the raw 4-char magic; the
-// caller is responsible for interpreting it.
-async function readMagic(fileNameOrFd) {
-    let fd, owns = false;
-    if (typeof fileNameOrFd === "string") {
-        fd = await fastFile__namespace.readExisting(fileNameOrFd);
-        owns = true;
-    } else if (fileNameOrFd && fileNameOrFd.type === "mem") {
-        const d = fileNameOrFd.data;
-        if (!d || d.length < 4) throw new Error("file too short");
-        return String.fromCharCode(d[0], d[1], d[2], d[3]);
-    } else {
-        fd = fileNameOrFd;
-    }
-    try {
-        const savedPos = fd.pos;
-        fd.pos = 0;
-        const b = await fd.read(4);
-        fd.pos = savedPos;
-        return String.fromCharCode(b[0], b[1], b[2], b[3]);
-    } finally {
-        if (owns) await fd.close();
-    }
-}
-
-// Like readMagic but enforces a v2params magic (p2u or p2c). Throws on
-// anything else, including a full zkey.
-async function detectV2Magic(fileNameOrFd) {
-    const s = await readMagic(fileNameOrFd);
-    if (s === MAGIC_P2U || s === MAGIC_P2C) return s;
-    const preview = s.replace(/\0+$/, "");
-    throw new Error(`expected p2u or p2c magic, got "${preview}"`);
-}
-
-/*
-    Copyright 2018 0KIMS association.
-
-    This file is part of snarkJS.
-
-    snarkJS is a free software: you can redistribute it and/or modify it
-    under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    snarkJS is distributed in the hope that it will be useful, but WITHOUT
-    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
-    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
-    License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
-*/
-
 const MAGIC_ZKEY = "zkey";
 
 async function phase2contribute(oldName, newName, name, entropy, logger) {
@@ -6662,8 +6658,12 @@ async function v2paramsDecompress(p2cName, p2uName, logger) {
 */
 
 async function readContributionHashes(v2paramsName) {
-    const magic = await detectV2Magic(v2paramsName);
-    const { mpcParams, hashes } = await readMPCParamsFile(v2paramsName, magic);
+    const magic = await readMagic(v2paramsName);
+    if (magic !== MAGIC_P2U && magic !== MAGIC_P2C) {
+        const preview = magic.replace(/\0+$/, "");
+        throw new Error(`expected p2u or p2c magic, got "${preview}"`);
+    }
+    const { mpcParams, hashes } = await readMPCParamsFile(v2paramsName);
     return { csHash: mpcParams.csHash, hashes };
 }
 

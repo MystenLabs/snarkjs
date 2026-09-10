@@ -56,12 +56,3 @@ export async function readMagic(fileNameOrFd) {
         if (owns) await fd.close();
     }
 }
-
-// Like readMagic but enforces a v2params magic (p2u or p2c). Throws on
-// anything else, including a full zkey.
-export async function detectV2Magic(fileNameOrFd) {
-    const s = await readMagic(fileNameOrFd);
-    if (s === MAGIC_P2U || s === MAGIC_P2C) return s;
-    const preview = s.replace(/\0+$/, "");
-    throw new Error(`expected p2u or p2c magic, got "${preview}"`);
-}

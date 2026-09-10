@@ -18,12 +18,16 @@
 */
 
 import * as misc from "./misc.js";
-import { detectV2Magic } from "./v2params_magic.js";
+import { MAGIC_P2U, MAGIC_P2C, readMagic } from "./v2params_magic.js";
 import { readMPCParamsFile } from "./zkey_utils.js";
 
 async function readContributionHashes(v2paramsName) {
-    const magic = await detectV2Magic(v2paramsName);
-    const { mpcParams, hashes } = await readMPCParamsFile(v2paramsName, magic);
+    const magic = await readMagic(v2paramsName);
+    if (magic !== MAGIC_P2U && magic !== MAGIC_P2C) {
+        const preview = magic.replace(/\0+$/, "");
+        throw new Error(`expected p2u or p2c magic, got "${preview}"`);
+    }
+    const { mpcParams, hashes } = await readMPCParamsFile(v2paramsName);
     return { csHash: mpcParams.csHash, hashes };
 }
 

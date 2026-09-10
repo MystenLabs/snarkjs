@@ -49,6 +49,7 @@ import * as binFileUtils from "@iden3/binfileutils";
 import { blake2b } from "@noble/hashes/blake2b";
 
 import { getCurveFromQ as getCurve } from "./curves.js";
+import { MAGIC_P2U, MAGIC_P2C, readMagic } from "./v2params_magic.js";
 import { log2 } from "./misc.js";
 import {FFLONK_PROTOCOL_ID, GROTH16_PROTOCOL_ID, PLONK_PROTOCOL_ID} from "./zkey_constants.js";
 import {ZKEY_FF_HEADER_SECTION} from "./fflonk_constants.js";
@@ -572,9 +573,14 @@ export function hashContribution(curve, c) {
     return hasher.digest();
 }
 
-// Read section 10 of a groth16 zkey or v2params file. `magic` selects the
-// container: "zkey", or a v2params magic from detectV2Magic.
-export async function readMPCParamsFile(fileName, magic) {
+// Read section 10 of a groth16 zkey or v2params file, the containers that
+// carry MPC params.
+export async function readMPCParamsFile(fileName) {
+    const magic = await readMagic(fileName);
+    if (magic !== "zkey" && magic !== MAGIC_P2U && magic !== MAGIC_P2C) {
+        const preview = magic.replace(/\0+$/, "");
+        throw new Error(`expected zkey, p2u or p2c magic, got "${preview}"`);
+    }
     const {fd, sections} = await binFileUtils.readBinFile(fileName, magic, 2);
     let curve;
     try {

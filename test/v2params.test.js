@@ -85,16 +85,18 @@ describe("v2params split-contribute pipeline", function () {
         const zkey_1 = {type: "mem"};
         await snarkjs.zKey.assemble(zkey_0, v2u_1, zkey_1);
 
-        const fromZkey = await readMPCParamsFile(zkey_1, "zkey");
-        const fromP2u = await readMPCParamsFile(v2u_1, "p2u\0");
-        const fromP2c = await readMPCParamsFile(p2c_1, "p2c\0");
+        const fromZkey = await readMPCParamsFile(zkey_1);
+        const fromP2u = await readMPCParamsFile(v2u_1);
+        const fromP2c = await readMPCParamsFile(p2c_1);
         assert.strictEqual(fromZkey.hashes.length, 1);
         assert(hashIsEqual(fromZkey.hashes[0], fromP2u.hashes[0]));
         assert(hashIsEqual(fromZkey.hashes[0], fromP2c.hashes[0]));
         assert(hashIsEqual(fromZkey.mpcParams.csHash, fromP2c.mpcParams.csHash));
         assert.strictEqual(fromZkey.mpcParams.contributions[0].name, "C1");
 
-        await assert.rejects(() => readMPCParamsFile(zkey_1, "p2u\0"), /Invalid File format/);
+        const bad = {type: "mem", data: new Uint8Array([0x66, 0x6f, 0x6f, 0x00, 0, 0, 0, 0])};
+        await assert.rejects(() => readMPCParamsFile(bad), /expected zkey, p2u or p2c magic, got "foo"/);
+        await assert.rejects(() => snarkjs.zKey.v2paramsExtends(zkey_1, p2c_1), /expected p2u or p2c magic, got "zkey"/);
     });
 
     it("v2paramsExtends checks exactly-one contribution prefix extension", async () => {
