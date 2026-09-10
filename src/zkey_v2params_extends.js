@@ -17,37 +17,14 @@
     along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
 */
 
-import * as binFileUtils from "@iden3/binfileutils";
-import { blake2b } from "@noble/hashes/blake2b";
-
-import { getCurveFromQ as getCurve } from "./curves.js";
 import * as misc from "./misc.js";
 import { detectV2Magic } from "./v2params_magic.js";
-import * as zkeyUtils from "./zkey_utils.js";
-import { hashPubKey } from "./zkey_utils.js";
+import { readMPCParamsFile } from "./zkey_utils.js";
 
 async function readContributionHashes(v2paramsName) {
     const magic = await detectV2Magic(v2paramsName);
-    const {fd, sections} = await binFileUtils.readBinFile(v2paramsName, magic, 2);
-    let curve;
-    try {
-        const zkey = await zkeyUtils.readHeader(fd, sections);
-        if (zkey.protocol !== "groth16") throw new Error("zkey is not groth16");
-
-        curve = await getCurve(zkey.q);
-        const mpcParams = await zkeyUtils.readMPCParams(fd, curve, sections);
-
-        const hashes = mpcParams.contributions.map((c) => {
-            const contributionHasher = blake2b.create({ dkLen: 64 });
-            hashPubKey(contributionHasher, curve, c);
-            return contributionHasher.digest();
-        });
-
-        return { csHash: mpcParams.csHash, hashes };
-    } finally {
-        await fd.close();
-        if (curve) await curve.terminate();
-    }
+    const { mpcParams, hashes } = await readMPCParamsFile(v2paramsName, magic);
+    return { csHash: mpcParams.csHash, hashes };
 }
 
 export default async function v2paramsExtends(formerV2Params, laterV2Params) {

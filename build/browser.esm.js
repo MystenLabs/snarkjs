@@ -1083,65 +1083,6 @@ async function sectionIsEqual(fd1, sections1, fd2, sections2, idSection) {
     return true;
 }
 
-const bls12381r$1 = Scalar.e("73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001", 16);
-const bn128r$1 = Scalar.e("21888242871839275222246405745257275088548364400416034343698204186575808495617");
-
-const bls12381q = Scalar.e("1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab", 16);
-const bn128q = Scalar.e("21888242871839275222246405745257275088696311157297823662689037894645226208583");
-
-async function getCurveFromR(r, options) {
-    let curve;
-    // check that options param is defined and that options.singleThread is defined
-    let singleThread = options && options.singleThread;
-    if (Scalar.eq(r, bn128r$1)) {
-        curve = await buildBn128(singleThread);
-    } else if (Scalar.eq(r, bls12381r$1)) {
-        curve = await buildBls12381(singleThread);
-    } else {
-        throw new Error(`Curve not supported: ${Scalar.toString(r)}`);
-    }
-    return curve;
-}
-
-async function getCurveFromQ(q, options) {
-    let curve;
-    let singleThread = options && options.singleThread;
-    if (Scalar.eq(q, bn128q)) {
-        curve = await buildBn128(singleThread);
-    } else if (Scalar.eq(q, bls12381q)) {
-        curve = await buildBls12381(singleThread);
-    } else {
-        throw new Error(`Curve not supported: ${Scalar.toString(q)}`);
-    }
-    return curve;
-}
-
-async function getCurveFromName(name, options) {
-    let curve;
-    let singleThread = options && options.singleThread;
-    const normName = normalizeName(name);
-    if (["BN128", "BN254", "ALTBN128"].indexOf(normName) >= 0) {
-        curve = await buildBn128(singleThread);
-    } else if (["BLS12381"].indexOf(normName) >= 0) {
-        curve = await buildBls12381(singleThread);
-    } else {
-        throw new Error(`Curve not supported: ${name}`);
-    }
-    return curve;
-
-    function normalizeName(n) {
-        return n.toUpperCase().match(/[A-Za-z0-9]+/g).join("");
-    }
-
-}
-
-var curves = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    getCurveFromR: getCurveFromR,
-    getCurveFromQ: getCurveFromQ,
-    getCurveFromName: getCurveFromName
-});
-
 /**
  * Internal assertion helpers.
  * @module
@@ -1633,6 +1574,65 @@ class BLAKE2b extends BLAKE {
  * @param opts - dkLen output length, key for MAC mode, salt, personalization
  */
 const blake2b = /* @__PURE__ */ wrapConstructorWithOpts((opts) => new BLAKE2b(opts));
+
+const bls12381r$1 = Scalar.e("73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001", 16);
+const bn128r$1 = Scalar.e("21888242871839275222246405745257275088548364400416034343698204186575808495617");
+
+const bls12381q = Scalar.e("1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab", 16);
+const bn128q = Scalar.e("21888242871839275222246405745257275088696311157297823662689037894645226208583");
+
+async function getCurveFromR(r, options) {
+    let curve;
+    // check that options param is defined and that options.singleThread is defined
+    let singleThread = options && options.singleThread;
+    if (Scalar.eq(r, bn128r$1)) {
+        curve = await buildBn128(singleThread);
+    } else if (Scalar.eq(r, bls12381r$1)) {
+        curve = await buildBls12381(singleThread);
+    } else {
+        throw new Error(`Curve not supported: ${Scalar.toString(r)}`);
+    }
+    return curve;
+}
+
+async function getCurveFromQ(q, options) {
+    let curve;
+    let singleThread = options && options.singleThread;
+    if (Scalar.eq(q, bn128q)) {
+        curve = await buildBn128(singleThread);
+    } else if (Scalar.eq(q, bls12381q)) {
+        curve = await buildBls12381(singleThread);
+    } else {
+        throw new Error(`Curve not supported: ${Scalar.toString(q)}`);
+    }
+    return curve;
+}
+
+async function getCurveFromName(name, options) {
+    let curve;
+    let singleThread = options && options.singleThread;
+    const normName = normalizeName(name);
+    if (["BN128", "BN254", "ALTBN128"].indexOf(normName) >= 0) {
+        curve = await buildBn128(singleThread);
+    } else if (["BLS12381"].indexOf(normName) >= 0) {
+        curve = await buildBls12381(singleThread);
+    } else {
+        throw new Error(`Curve not supported: ${name}`);
+    }
+    return curve;
+
+    function normalizeName(n) {
+        return n.toUpperCase().match(/[A-Za-z0-9]+/g).join("");
+    }
+
+}
+
+var curves = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getCurveFromR: getCurveFromR,
+    getCurveFromQ: getCurveFromQ,
+    getCurveFromName: getCurveFromName
+});
 
 /*
     Copyright 2018 0KIMS association.
@@ -2338,6 +2338,32 @@ function hashPubKey(hasher, curve, c) {
     hashG1(hasher, curve, c.delta.g1_sx);
     hashG2(hasher, curve, c.delta.g2_spx);
     hasher.update(c.transcript);
+}
+
+// 64-byte blake2b contribution hash, as printed by contribute/beacon and
+// checked by verifyFromInit.
+function hashContribution(curve, c) {
+    const hasher = blake2b.create({ dkLen: 64 });
+    hashPubKey(hasher, curve, c);
+    return hasher.digest();
+}
+
+// Read section 10 of a groth16 zkey or v2params file. `magic` selects the
+// container: "zkey", or a v2params magic from detectV2Magic.
+async function readMPCParamsFile(fileName, magic) {
+    const {fd, sections} = await readBinFile(fileName, magic, 2);
+    let curve;
+    try {
+        const zkey = await readHeader$1(fd, sections);
+        if (zkey.protocol !== "groth16") throw new Error("zkey is not groth16");
+        curve = await getCurveFromQ(zkey.q);
+        const mpcParams = await readMPCParams(fd, curve, sections);
+        const hashes = mpcParams.contributions.map((c) => hashContribution(curve, c));
+        return { mpcParams, hashes };
+    } finally {
+        await fd.close();
+        if (curve) await curve.terminate();
+    }
 }
 
 /*
@@ -9129,26 +9155,8 @@ async function v2paramsDecompress(p2cName, p2uName, logger) {
 
 async function readContributionHashes(v2paramsName) {
     const magic = await detectV2Magic(v2paramsName);
-    const {fd, sections} = await readBinFile(v2paramsName, magic, 2);
-    let curve;
-    try {
-        const zkey = await readHeader$1(fd, sections);
-        if (zkey.protocol !== "groth16") throw new Error("zkey is not groth16");
-
-        curve = await getCurveFromQ(zkey.q);
-        const mpcParams = await readMPCParams(fd, curve, sections);
-
-        const hashes = mpcParams.contributions.map((c) => {
-            const contributionHasher = blake2b.create({ dkLen: 64 });
-            hashPubKey(contributionHasher, curve, c);
-            return contributionHasher.digest();
-        });
-
-        return { csHash: mpcParams.csHash, hashes };
-    } finally {
-        await fd.close();
-        if (curve) await curve.terminate();
-    }
+    const { mpcParams, hashes } = await readMPCParamsFile(v2paramsName, magic);
+    return { csHash: mpcParams.csHash, hashes };
 }
 
 async function v2paramsExtends(formerV2Params, laterV2Params) {

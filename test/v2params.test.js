@@ -1,5 +1,7 @@
 import * as snarkjs from "../main.js";
 import { getCurveFromName } from "../src/curves.js";
+import { readMPCParamsFile } from "../src/zkey_utils.js";
+import { hashIsEqual } from "../src/misc.js";
 import assert from "assert";
 import path from "path";
 
@@ -71,6 +73,28 @@ describe("v2params split-contribute pipeline", function () {
         await snarkjs.zKey.assemble(zkey_0, v2u_3, zkey_full);
         const ok = await snarkjs.zKey.verifyFromInit(zkey_0, ptau_final, zkey_full);
         assert(ok, "verifyFromInit failed");
+    });
+
+    it("readMPCParamsFile reads the same chain from a zkey and its v2params", async () => {
+        const v2u_0 = {type: "mem"};
+        const v2u_1 = {type: "mem"};
+        const p2c_1 = {type: "mem"};
+        await snarkjs.zKey.extract(zkey_0, v2u_0);
+        await snarkjs.zKey.contribute(v2u_0, v2u_1, "C1", "entropy-1");
+        await snarkjs.zKey.compressV2Params(v2u_1, p2c_1);
+        const zkey_1 = {type: "mem"};
+        await snarkjs.zKey.assemble(zkey_0, v2u_1, zkey_1);
+
+        const fromZkey = await readMPCParamsFile(zkey_1, "zkey");
+        const fromP2u = await readMPCParamsFile(v2u_1, "p2u\0");
+        const fromP2c = await readMPCParamsFile(p2c_1, "p2c\0");
+        assert.strictEqual(fromZkey.hashes.length, 1);
+        assert(hashIsEqual(fromZkey.hashes[0], fromP2u.hashes[0]));
+        assert(hashIsEqual(fromZkey.hashes[0], fromP2c.hashes[0]));
+        assert(hashIsEqual(fromZkey.mpcParams.csHash, fromP2c.mpcParams.csHash));
+        assert.strictEqual(fromZkey.mpcParams.contributions[0].name, "C1");
+
+        await assert.rejects(() => readMPCParamsFile(zkey_1, "p2u\0"), /Invalid File format/);
     });
 
     it("v2paramsExtends checks exactly-one contribution prefix extension", async () => {

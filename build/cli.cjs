@@ -4198,6 +4198,32 @@ function hashPubKey(hasher, curve, c) {
     hasher.update(c.transcript);
 }
 
+// 64-byte blake2b contribution hash, as printed by contribute/beacon and
+// checked by verifyFromInit.
+function hashContribution(curve, c) {
+    const hasher = blake2b.blake2b.create({ dkLen: 64 });
+    hashPubKey(hasher, curve, c);
+    return hasher.digest();
+}
+
+// Read section 10 of a groth16 zkey or v2params file. `magic` selects the
+// container: "zkey", or a v2params magic from detectV2Magic.
+async function readMPCParamsFile(fileName, magic) {
+    const {fd, sections} = await binFileUtils__namespace.readBinFile(fileName, magic, 2);
+    let curve;
+    try {
+        const zkey = await readHeader$1(fd, sections);
+        if (zkey.protocol !== "groth16") throw new Error("zkey is not groth16");
+        curve = await getCurveFromQ(zkey.q);
+        const mpcParams = await readMPCParams(fd, curve, sections);
+        const hashes = mpcParams.contributions.map((c) => hashContribution(curve, c));
+        return { mpcParams, hashes };
+    } finally {
+        await fd.close();
+        if (curve) await curve.terminate();
+    }
+}
+
 async function phase2exportMPCParams(zkeyName, mpcparamsName, logger) {
 
     const {fd: fdZKey, sections: sectionsZKey} = await binFileUtils__namespace.readBinFile(zkeyName, "zkey", 2);
@@ -5882,26 +5908,8 @@ async function v2paramsDecompress(p2cName, p2uName, logger) {
 
 async function readContributionHashes(v2paramsName) {
     const magic = await detectV2Magic(v2paramsName);
-    const {fd, sections} = await binFileUtils__namespace.readBinFile(v2paramsName, magic, 2);
-    let curve;
-    try {
-        const zkey = await readHeader$1(fd, sections);
-        if (zkey.protocol !== "groth16") throw new Error("zkey is not groth16");
-
-        curve = await getCurveFromQ(zkey.q);
-        const mpcParams = await readMPCParams(fd, curve, sections);
-
-        const hashes = mpcParams.contributions.map((c) => {
-            const contributionHasher = blake2b.blake2b.create({ dkLen: 64 });
-            hashPubKey(contributionHasher, curve, c);
-            return contributionHasher.digest();
-        });
-
-        return { csHash: mpcParams.csHash, hashes };
-    } finally {
-        await fd.close();
-        if (curve) await curve.terminate();
-    }
+    const { mpcParams, hashes } = await readMPCParamsFile(v2paramsName, magic);
+    return { csHash: mpcParams.csHash, hashes };
 }
 
 async function v2paramsExtends(formerV2Params, laterV2Params) {

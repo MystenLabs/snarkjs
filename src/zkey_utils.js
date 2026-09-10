@@ -46,6 +46,7 @@
 
 import { Scalar, F1Field } from "ffjavascript";
 import * as binFileUtils from "@iden3/binfileutils";
+import { blake2b } from "@noble/hashes/blake2b";
 
 import { getCurveFromQ as getCurve } from "./curves.js";
 import { log2 } from "./misc.js";
@@ -561,5 +562,31 @@ export function hashPubKey(hasher, curve, c) {
     hashG1(hasher, curve, c.delta.g1_sx);
     hashG2(hasher, curve, c.delta.g2_spx);
     hasher.update(c.transcript);
+}
+
+// 64-byte blake2b contribution hash, as printed by contribute/beacon and
+// checked by verifyFromInit.
+export function hashContribution(curve, c) {
+    const hasher = blake2b.create({ dkLen: 64 });
+    hashPubKey(hasher, curve, c);
+    return hasher.digest();
+}
+
+// Read section 10 of a groth16 zkey or v2params file. `magic` selects the
+// container: "zkey", or a v2params magic from detectV2Magic.
+export async function readMPCParamsFile(fileName, magic) {
+    const {fd, sections} = await binFileUtils.readBinFile(fileName, magic, 2);
+    let curve;
+    try {
+        const zkey = await readHeader(fd, sections);
+        if (zkey.protocol !== "groth16") throw new Error("zkey is not groth16");
+        curve = await getCurve(zkey.q);
+        const mpcParams = await readMPCParams(fd, curve, sections);
+        const hashes = mpcParams.contributions.map((c) => hashContribution(curve, c));
+        return { mpcParams, hashes };
+    } finally {
+        await fd.close();
+        if (curve) await curve.terminate();
+    }
 }
 
