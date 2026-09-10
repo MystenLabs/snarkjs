@@ -1083,65 +1083,6 @@ async function sectionIsEqual(fd1, sections1, fd2, sections2, idSection) {
     return true;
 }
 
-const bls12381r$1 = Scalar.e("73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001", 16);
-const bn128r$1 = Scalar.e("21888242871839275222246405745257275088548364400416034343698204186575808495617");
-
-const bls12381q = Scalar.e("1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab", 16);
-const bn128q = Scalar.e("21888242871839275222246405745257275088696311157297823662689037894645226208583");
-
-async function getCurveFromR(r, options) {
-    let curve;
-    // check that options param is defined and that options.singleThread is defined
-    let singleThread = options && options.singleThread;
-    if (Scalar.eq(r, bn128r$1)) {
-        curve = await buildBn128(singleThread);
-    } else if (Scalar.eq(r, bls12381r$1)) {
-        curve = await buildBls12381(singleThread);
-    } else {
-        throw new Error(`Curve not supported: ${Scalar.toString(r)}`);
-    }
-    return curve;
-}
-
-async function getCurveFromQ(q, options) {
-    let curve;
-    let singleThread = options && options.singleThread;
-    if (Scalar.eq(q, bn128q)) {
-        curve = await buildBn128(singleThread);
-    } else if (Scalar.eq(q, bls12381q)) {
-        curve = await buildBls12381(singleThread);
-    } else {
-        throw new Error(`Curve not supported: ${Scalar.toString(q)}`);
-    }
-    return curve;
-}
-
-async function getCurveFromName(name, options) {
-    let curve;
-    let singleThread = options && options.singleThread;
-    const normName = normalizeName(name);
-    if (["BN128", "BN254", "ALTBN128"].indexOf(normName) >= 0) {
-        curve = await buildBn128(singleThread);
-    } else if (["BLS12381"].indexOf(normName) >= 0) {
-        curve = await buildBls12381(singleThread);
-    } else {
-        throw new Error(`Curve not supported: ${name}`);
-    }
-    return curve;
-
-    function normalizeName(n) {
-        return n.toUpperCase().match(/[A-Za-z0-9]+/g).join("");
-    }
-
-}
-
-var curves = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    getCurveFromR: getCurveFromR,
-    getCurveFromQ: getCurveFromQ,
-    getCurveFromName: getCurveFromName
-});
-
 /**
  * Internal assertion helpers.
  * @module
@@ -1633,6 +1574,113 @@ class BLAKE2b extends BLAKE {
  * @param opts - dkLen output length, key for MAC mode, salt, personalization
  */
 const blake2b = /* @__PURE__ */ wrapConstructorWithOpts((opts) => new BLAKE2b(opts));
+
+const bls12381r$1 = Scalar.e("73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001", 16);
+const bn128r$1 = Scalar.e("21888242871839275222246405745257275088548364400416034343698204186575808495617");
+
+const bls12381q = Scalar.e("1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab", 16);
+const bn128q = Scalar.e("21888242871839275222246405745257275088696311157297823662689037894645226208583");
+
+async function getCurveFromR(r, options) {
+    let curve;
+    // check that options param is defined and that options.singleThread is defined
+    let singleThread = options && options.singleThread;
+    if (Scalar.eq(r, bn128r$1)) {
+        curve = await buildBn128(singleThread);
+    } else if (Scalar.eq(r, bls12381r$1)) {
+        curve = await buildBls12381(singleThread);
+    } else {
+        throw new Error(`Curve not supported: ${Scalar.toString(r)}`);
+    }
+    return curve;
+}
+
+async function getCurveFromQ(q, options) {
+    let curve;
+    let singleThread = options && options.singleThread;
+    if (Scalar.eq(q, bn128q)) {
+        curve = await buildBn128(singleThread);
+    } else if (Scalar.eq(q, bls12381q)) {
+        curve = await buildBls12381(singleThread);
+    } else {
+        throw new Error(`Curve not supported: ${Scalar.toString(q)}`);
+    }
+    return curve;
+}
+
+async function getCurveFromName(name, options) {
+    let curve;
+    let singleThread = options && options.singleThread;
+    const normName = normalizeName(name);
+    if (["BN128", "BN254", "ALTBN128"].indexOf(normName) >= 0) {
+        curve = await buildBn128(singleThread);
+    } else if (["BLS12381"].indexOf(normName) >= 0) {
+        curve = await buildBls12381(singleThread);
+    } else {
+        throw new Error(`Curve not supported: ${name}`);
+    }
+    return curve;
+
+    function normalizeName(n) {
+        return n.toUpperCase().match(/[A-Za-z0-9]+/g).join("");
+    }
+
+}
+
+var curves = /*#__PURE__*/Object.freeze({
+    __proto__: null,
+    getCurveFromR: getCurveFromR,
+    getCurveFromQ: getCurveFromQ,
+    getCurveFromName: getCurveFromName
+});
+
+/*
+    Copyright 2018 0KIMS association.
+
+    This file is part of snarkJS.
+
+    snarkJS is a free software: you can redistribute it and/or modify it
+    under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    snarkJS is distributed in the hope that it will be useful, but WITHOUT
+    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
+    License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+const MAGIC_P2U = "p2u\0";   // phase-2 params, uncompressed (LEM)
+const MAGIC_P2C = "p2c\0";   // phase-2 params, compressed
+
+// Read the first 4 bytes of a file (or mem object) as a string, without
+// disturbing any caller-held position. Returns the raw 4-char magic; the
+// caller is responsible for interpreting it.
+async function readMagic(fileNameOrFd) {
+    let fd, owns = false;
+    if (typeof fileNameOrFd === "string") {
+        fd = await readExisting(fileNameOrFd);
+        owns = true;
+    } else if (fileNameOrFd && fileNameOrFd.type === "mem") {
+        const d = fileNameOrFd.data;
+        if (!d || d.length < 4) throw new Error("file too short");
+        return String.fromCharCode(d[0], d[1], d[2], d[3]);
+    } else {
+        fd = fileNameOrFd;
+    }
+    try {
+        const savedPos = fd.pos;
+        fd.pos = 0;
+        const b = await fd.read(4);
+        fd.pos = savedPos;
+        return String.fromCharCode(b[0], b[1], b[2], b[3]);
+    } finally {
+        if (owns) await fd.close();
+    }
+}
 
 /*
     Copyright 2018 0KIMS association.
@@ -2338,6 +2386,37 @@ function hashPubKey(hasher, curve, c) {
     hashG1(hasher, curve, c.delta.g1_sx);
     hashG2(hasher, curve, c.delta.g2_spx);
     hasher.update(c.transcript);
+}
+
+// 64-byte blake2b contribution hash, as printed by contribute/beacon and
+// checked by verifyFromInit.
+function hashContribution(curve, c) {
+    const hasher = blake2b.create({ dkLen: 64 });
+    hashPubKey(hasher, curve, c);
+    return hasher.digest();
+}
+
+// Read section 10 of a groth16 zkey or v2params file, the containers that
+// carry MPC params.
+async function readMPCParamsFile(fileName) {
+    const magic = await readMagic(fileName);
+    if (magic !== "zkey" && magic !== MAGIC_P2U && magic !== MAGIC_P2C) {
+        const preview = magic.replace(/\0+$/, "");
+        throw new Error(`expected zkey, p2u or p2c magic, got "${preview}"`);
+    }
+    const {fd, sections} = await readBinFile(fileName, magic, 2);
+    let curve;
+    try {
+        const zkey = await readHeader$1(fd, sections);
+        if (zkey.protocol !== "groth16") throw new Error("zkey is not groth16");
+        curve = await getCurveFromQ(zkey.q);
+        const mpcParams = await readMPCParams(fd, curve, sections);
+        const hashes = mpcParams.contributions.map((c) => hashContribution(curve, c));
+        return { mpcParams, hashes };
+    } finally {
+        await fd.close();
+        if (curve) await curve.terminate();
+    }
 }
 
 /*
@@ -8248,63 +8327,6 @@ async function phase2verifyFromR1cs(r1csFileName, pTauFileName, zkeyFileName, lo
     along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
 */
 
-const MAGIC_P2U = "p2u\0";   // phase-2 params, uncompressed (LEM)
-const MAGIC_P2C = "p2c\0";   // phase-2 params, compressed
-
-// Read the first 4 bytes of a file (or mem object) as a string, without
-// disturbing any caller-held position. Returns the raw 4-char magic; the
-// caller is responsible for interpreting it.
-async function readMagic(fileNameOrFd) {
-    let fd, owns = false;
-    if (typeof fileNameOrFd === "string") {
-        fd = await readExisting(fileNameOrFd);
-        owns = true;
-    } else if (fileNameOrFd && fileNameOrFd.type === "mem") {
-        const d = fileNameOrFd.data;
-        if (!d || d.length < 4) throw new Error("file too short");
-        return String.fromCharCode(d[0], d[1], d[2], d[3]);
-    } else {
-        fd = fileNameOrFd;
-    }
-    try {
-        const savedPos = fd.pos;
-        fd.pos = 0;
-        const b = await fd.read(4);
-        fd.pos = savedPos;
-        return String.fromCharCode(b[0], b[1], b[2], b[3]);
-    } finally {
-        if (owns) await fd.close();
-    }
-}
-
-// Like readMagic but enforces a v2params magic (p2u or p2c). Throws on
-// anything else, including a full zkey.
-async function detectV2Magic(fileNameOrFd) {
-    const s = await readMagic(fileNameOrFd);
-    if (s === MAGIC_P2U || s === MAGIC_P2C) return s;
-    const preview = s.replace(/\0+$/, "");
-    throw new Error(`expected p2u or p2c magic, got "${preview}"`);
-}
-
-/*
-    Copyright 2018 0KIMS association.
-
-    This file is part of snarkJS.
-
-    snarkJS is a free software: you can redistribute it and/or modify it
-    under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    snarkJS is distributed in the hope that it will be useful, but WITHOUT
-    ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
-    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public
-    License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with snarkJS. If not, see <https://www.gnu.org/licenses/>.
-*/
-
 const MAGIC_ZKEY = "zkey";
 
 async function phase2contribute(oldName, newName, name, entropy, logger) {
@@ -9128,27 +9150,13 @@ async function v2paramsDecompress(p2cName, p2uName, logger) {
 */
 
 async function readContributionHashes(v2paramsName) {
-    const magic = await detectV2Magic(v2paramsName);
-    const {fd, sections} = await readBinFile(v2paramsName, magic, 2);
-    let curve;
-    try {
-        const zkey = await readHeader$1(fd, sections);
-        if (zkey.protocol !== "groth16") throw new Error("zkey is not groth16");
-
-        curve = await getCurveFromQ(zkey.q);
-        const mpcParams = await readMPCParams(fd, curve, sections);
-
-        const hashes = mpcParams.contributions.map((c) => {
-            const contributionHasher = blake2b.create({ dkLen: 64 });
-            hashPubKey(contributionHasher, curve, c);
-            return contributionHasher.digest();
-        });
-
-        return { csHash: mpcParams.csHash, hashes };
-    } finally {
-        await fd.close();
-        if (curve) await curve.terminate();
+    const magic = await readMagic(v2paramsName);
+    if (magic !== MAGIC_P2U && magic !== MAGIC_P2C) {
+        const preview = magic.replace(/\0+$/, "");
+        throw new Error(`expected p2u or p2c magic, got "${preview}"`);
     }
+    const { mpcParams, hashes } = await readMPCParamsFile(v2paramsName);
+    return { csHash: mpcParams.csHash, hashes };
 }
 
 async function v2paramsExtends(formerV2Params, laterV2Params) {
