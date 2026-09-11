@@ -1725,8 +1725,15 @@ function toPartialHash(hash){
     (res32[10] = hash.v5l), (res32[11] = hash.v5h);
     (res32[12] = hash.v6l), (res32[13] = hash.v6h);
     (res32[14] = hash.v7l), (res32[15] = hash.v7h);
-    res32[18] = hash.pos;
-    res32[16] = hash.length-hash.pos;
+    // length and pos are plain Numbers in noble's blake2b, and length grows past
+    // 2^32 on large accumulators (a 2^28 ptau is ~96 GiB). fromPartialHash already
+    // reads each as a lo/hi pair of u32 words, so store both halves here or the
+    // low word silently wraps and every hash recomputed from this record is wrong.
+    const len = hash.length - hash.pos;
+    res32[16] = len % 2 ** 32;
+    res32[17] = Math.floor(len / 2 ** 32);
+    res32[18] = hash.pos % 2 ** 32;
+    res32[19] = Math.floor(hash.pos / 2 ** 32);
     return res;
 }
 
