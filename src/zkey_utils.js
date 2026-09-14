@@ -585,8 +585,8 @@ export async function readMPCParamsFile(fileName) {
     let curve;
     try {
         const zkey = await readHeader(fd, sections);
+        curve = zkey.curve;
         if (zkey.protocol !== "groth16") throw new Error("zkey is not groth16");
-        curve = await getCurve(zkey.q);
         const mpcParams = await readMPCParams(fd, curve, sections);
         const hashes = mpcParams.contributions.map((c) => hashContribution(curve, c));
         return { mpcParams, hashes };
@@ -595,4 +595,3 @@ export async function readMPCParamsFile(fileName) {
         if (curve) await curve.terminate();
     }
 }
-

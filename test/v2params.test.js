@@ -1,7 +1,8 @@
 import * as snarkjs from "../main.js";
 import { getCurveFromName } from "../src/curves.js";
-import { hashIsEqual } from "../src/misc.js";
+import { formatHash, hashIsEqual } from "../src/misc.js";
 import assert from "assert";
+import crypto from "crypto";
 import path from "path";
 
 describe("v2params split-contribute pipeline", function () {
@@ -74,31 +75,93 @@ describe("v2params split-contribute pipeline", function () {
         assert(ok, "verifyFromInit failed");
     });
 
-    it("readMPCParamsFile reads the same chain from a zkey and its v2params", async () => {
+    it("zkey and p2u contribution chains produce the same MPC params", async () => {
         const v2u_0 = {type: "mem"};
-        const v2u_1 = {type: "mem"};
-        const p2c_1 = {type: "mem"};
         await snarkjs.zKey.extract(zkey_0, v2u_0);
-        const contributionHash = await snarkjs.zKey.contribute(v2u_0, v2u_1, "C1", "entropy-1");
-        await snarkjs.zKey.compressV2Params(v2u_1, p2c_1);
-        const zkey_1 = {type: "mem"};
-        await snarkjs.zKey.assemble(zkey_0, v2u_1, zkey_1);
 
-        assert(await snarkjs.zKey.verifyFromInit(zkey_0, ptau_final, zkey_1));
+        let directZkey = zkey_0;
+        let v2u = v2u_0;
+        const directContributionHashes = [];
+        const v2ContributionHashes = [];
+        const randomFillSync = crypto.randomFillSync;
+        try {
+            crypto.randomFillSync = (buffer) => buffer.fill(0x42);
+            for (let i = 1; i <= 5; i++) {
+                const nextDirectZkey = {type: "mem"};
+                const nextV2u = {type: "mem"};
+                directContributionHashes.push(await snarkjs.zKey.contribute(
+                    directZkey, nextDirectZkey, `C${i}`, `entropy-${i}`
+                ));
+                v2ContributionHashes.push(await snarkjs.zKey.contribute(
+                    v2u, nextV2u, `C${i}`, `entropy-${i}`
+                ));
+                directZkey = nextDirectZkey;
+                v2u = nextV2u;
+            }
+        } finally {
+            crypto.randomFillSync = randomFillSync;
+        }
 
-        const fromZkey = await snarkjs.zKey.readMPCParamsFile(zkey_1);
-        const fromP2u = await snarkjs.zKey.readMPCParamsFile(v2u_1);
-        const fromP2c = await snarkjs.zKey.readMPCParamsFile(p2c_1);
-        assert.strictEqual(fromZkey.hashes.length, 1);
-        assert(hashIsEqual(contributionHash, fromZkey.hashes[0]));
-        assert(hashIsEqual(fromZkey.hashes[0], fromP2u.hashes[0]));
-        assert(hashIsEqual(fromZkey.hashes[0], fromP2c.hashes[0]));
-        assert(hashIsEqual(fromZkey.mpcParams.csHash, fromP2c.mpcParams.csHash));
-        assert.strictEqual(fromZkey.mpcParams.contributions[0].name, "C1");
+        const p2c = {type: "mem"};
+        await snarkjs.zKey.compressV2Params(v2u, p2c);
+        const assembledZkey = {type: "mem"};
+        await snarkjs.zKey.assemble(zkey_0, v2u, assembledZkey);
+
+        const verificationMessages = [];
+        const logger = {
+            debug() {},
+            error() {},
+            info(message) { verificationMessages.push(message); }
+        };
+        assert(await snarkjs.zKey.verifyFromInit(zkey_0, ptau_final, directZkey, logger));
+        assert(await snarkjs.zKey.verifyFromInit(zkey_0, ptau_final, assembledZkey));
+
+        const fromDirectZkey = await snarkjs.zKey.readMPCParamsFile(directZkey);
+        const fromAssembledZkey = await snarkjs.zKey.readMPCParamsFile(assembledZkey);
+        const fromP2u = await snarkjs.zKey.readMPCParamsFile(v2u);
+        const fromP2c = await snarkjs.zKey.readMPCParamsFile(p2c);
+        assert.deepStrictEqual(fromDirectZkey, fromP2u);
+        assert.deepStrictEqual(fromDirectZkey, fromP2c);
+        assert.deepStrictEqual(fromDirectZkey, fromAssembledZkey);
+        assert.strictEqual(fromDirectZkey.hashes.length, 5);
+        for (let i = 0; i < 5; i++) {
+            assert(hashIsEqual(directContributionHashes[i], v2ContributionHashes[i]));
+            assert(hashIsEqual(directContributionHashes[i], fromDirectZkey.hashes[i]));
+            assert.strictEqual(fromDirectZkey.mpcParams.contributions[i].name, `C${i + 1}`);
+            assert(verificationMessages.includes(formatHash(
+                fromDirectZkey.hashes[i], `contribution #${i + 1} C${i + 1}:`
+            )));
+        }
 
         const bad = {type: "mem", data: new Uint8Array([0x66, 0x6f, 0x6f, 0x00, 0, 0, 0, 0])};
         await assert.rejects(() => snarkjs.zKey.readMPCParamsFile(bad), /expected zkey, p2u or p2c magic, got "foo"/);
-        await assert.rejects(() => snarkjs.zKey.v2paramsExtends(zkey_1, p2c_1), /expected p2u or p2c magic, got "zkey"/);
+        await assert.rejects(() => snarkjs.zKey.v2paramsExtends(directZkey, p2c), /expected p2u or p2c magic, got "zkey"/);
+    });
+
+    it("reads the contribution hash returned and verified for a beacon", async () => {
+        const beaconZkey = {type: "mem"};
+        const contributionHash = await snarkjs.zKey.beacon(
+            zkey_0,
+            beaconZkey,
+            "Final beacon",
+            "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+            10
+        );
+        const {mpcParams, hashes} = await snarkjs.zKey.readMPCParamsFile(beaconZkey);
+
+        assert.strictEqual(hashes.length, 1);
+        assert(hashIsEqual(contributionHash, hashes[0]));
+        assert.strictEqual(mpcParams.contributions[0].type, 1);
+        assert.strictEqual(mpcParams.contributions[0].numIterationsExp, 10);
+
+        const verificationMessages = [];
+        const logger = {
+            debug() {},
+            error() {},
+            info(message) { verificationMessages.push(message); }
+        };
+        assert(await snarkjs.zKey.verifyFromInit(zkey_0, ptau_final, beaconZkey, logger));
+        assert(verificationMessages.includes(formatHash(hashes[0], "contribution #1 Final beacon:")));
     });
 
     it("v2paramsExtends checks exactly-one contribution prefix extension", async () => {
