@@ -5463,10 +5463,7 @@ async function phase2verifyFromInit(initFileName, pTauFileName, zkeyFileName, lo
 
         hashPubKey(accumulatedHasher, curve, c);
 
-        const contributionHasher = blake2b.blake2b.create({ dkLen: 64 });
-        hashPubKey(contributionHasher, curve, c);
-
-        c.contributionHash = contributionHasher.digest();
+        c.contributionHash = hashContribution(curve, c);
 
         curDelta = c.deltaAfter;
     }
@@ -5913,10 +5910,7 @@ async function phase2contribute(oldName, newName, name, entropy, logger) {
     await fdOld.close();
     await fdNew.close();
 
-    const contributionHasher = blake2b.blake2b.create({ dkLen: 64 });
-    hashPubKey(contributionHasher, curve, curContribution);
-
-    const contributionHash = contributionHasher.digest();
+    const contributionHash = hashContribution(curve, curContribution);
 
     if (logger) logger.info(formatHash(mpcParams.csHash, "Circuit Hash: "));
     if (logger) logger.info(formatHash(contributionHash, "Contribution Hash: "));
@@ -6035,9 +6029,7 @@ async function beacon(zkeyNameOld, zkeyNameNew, name, beaconHashStr, numIteratio
     await fdOld.close();
     await fdNew.close();
 
-    const contributionHasher = blake2b.blake2b.create({ dkLen: 64 });    hashPubKey(contributionHasher, curve, curContribution);
-
-    const contributionHash = contributionHasher.digest();
+    const contributionHash = hashContribution(curve, curContribution);
 
     if (logger) logger.info(formatHash(contributionHash, "Contribution Hash: "));
 
@@ -6721,7 +6713,8 @@ var zkey = /*#__PURE__*/Object.freeze({
     assemble: zkeyAssemble,
     compressV2Params: v2paramsCompress,
     decompressV2Params: v2paramsDecompress,
-    v2paramsExtends: v2paramsExtends
+    v2paramsExtends: v2paramsExtends,
+    readMPCParamsFile: readMPCParamsFile
 });
 
 /*

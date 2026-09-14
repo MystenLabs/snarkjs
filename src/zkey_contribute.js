@@ -115,10 +115,7 @@ export default async function phase2contribute(oldName, newName, name, entropy, 
     await fdOld.close();
     await fdNew.close();
 
-    const contributionHasher = blake2b.create({ dkLen: 64 });
-    utils.hashPubKey(contributionHasher, curve, curContribution);
-
-    const contributionHash = contributionHasher.digest();
+    const contributionHash = utils.hashContribution(curve, curContribution);
 
     if (logger) logger.info(misc.formatHash(mpcParams.csHash, "Circuit Hash: "));
     if (logger) logger.info(misc.formatHash(contributionHash, "Contribution Hash: "));

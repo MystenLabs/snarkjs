@@ -1,6 +1,5 @@
 import * as snarkjs from "../main.js";
 import { getCurveFromName } from "../src/curves.js";
-import { readMPCParamsFile } from "../src/zkey_utils.js";
 import { hashIsEqual } from "../src/misc.js";
 import assert from "assert";
 import path from "path";
@@ -80,22 +79,25 @@ describe("v2params split-contribute pipeline", function () {
         const v2u_1 = {type: "mem"};
         const p2c_1 = {type: "mem"};
         await snarkjs.zKey.extract(zkey_0, v2u_0);
-        await snarkjs.zKey.contribute(v2u_0, v2u_1, "C1", "entropy-1");
+        const contributionHash = await snarkjs.zKey.contribute(v2u_0, v2u_1, "C1", "entropy-1");
         await snarkjs.zKey.compressV2Params(v2u_1, p2c_1);
         const zkey_1 = {type: "mem"};
         await snarkjs.zKey.assemble(zkey_0, v2u_1, zkey_1);
 
-        const fromZkey = await readMPCParamsFile(zkey_1);
-        const fromP2u = await readMPCParamsFile(v2u_1);
-        const fromP2c = await readMPCParamsFile(p2c_1);
+        assert(await snarkjs.zKey.verifyFromInit(zkey_0, ptau_final, zkey_1));
+
+        const fromZkey = await snarkjs.zKey.readMPCParamsFile(zkey_1);
+        const fromP2u = await snarkjs.zKey.readMPCParamsFile(v2u_1);
+        const fromP2c = await snarkjs.zKey.readMPCParamsFile(p2c_1);
         assert.strictEqual(fromZkey.hashes.length, 1);
+        assert(hashIsEqual(contributionHash, fromZkey.hashes[0]));
         assert(hashIsEqual(fromZkey.hashes[0], fromP2u.hashes[0]));
         assert(hashIsEqual(fromZkey.hashes[0], fromP2c.hashes[0]));
         assert(hashIsEqual(fromZkey.mpcParams.csHash, fromP2c.mpcParams.csHash));
         assert.strictEqual(fromZkey.mpcParams.contributions[0].name, "C1");
 
         const bad = {type: "mem", data: new Uint8Array([0x66, 0x6f, 0x6f, 0x00, 0, 0, 0, 0])};
-        await assert.rejects(() => readMPCParamsFile(bad), /expected zkey, p2u or p2c magic, got "foo"/);
+        await assert.rejects(() => snarkjs.zKey.readMPCParamsFile(bad), /expected zkey, p2u or p2c magic, got "foo"/);
         await assert.rejects(() => snarkjs.zKey.v2paramsExtends(zkey_1, p2c_1), /expected p2u or p2c magic, got "zkey"/);
     });
 

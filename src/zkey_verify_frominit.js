@@ -24,7 +24,7 @@ import { blake2b } from "@noble/hashes/blake2b";
 import * as misc from "./misc.js";
 import { hashToG2 as hashToG2 } from "./keypair.js";
 const sameRatio = misc.sameRatio;
-import {hashG1, hashPubKey} from "./zkey_utils.js";
+import {hashG1, hashPubKey, hashContribution} from "./zkey_utils.js";
 import { Scalar, ChaCha, BigBuffer } from "ffjavascript";
 
 
@@ -89,10 +89,7 @@ export default async function phase2verifyFromInit(initFileName, pTauFileName, z
 
         hashPubKey(accumulatedHasher, curve, c);
 
-        const contributionHasher = blake2b.create({ dkLen: 64 });
-        hashPubKey(contributionHasher, curve, c);
-
-        c.contributionHash = contributionHasher.digest();
+        c.contributionHash = hashContribution(curve, c);
 
         curDelta = c.deltaAfter;
     }
@@ -415,4 +412,3 @@ export default async function phase2verifyFromInit(initFileName, pTauFileName, z
     }
 
 }
-
