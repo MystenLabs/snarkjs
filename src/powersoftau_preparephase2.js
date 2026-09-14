@@ -24,10 +24,10 @@ import {BigBuffer} from "ffjavascript";
 export default async function preparePhase2(oldPtauFilename, newPTauFilename, logger) {
 
     const {fd: fdOld, sections} = await binFileUtils.readBinFile(oldPtauFilename, "ptau", 1);
-    const {curve, power} = await utils.readPTauHeader(fdOld, sections);
+    const {curve, power, ceremonyPower} = await utils.readPTauHeader(fdOld, sections);
 
     const fdNew = await binFileUtils.createBinFile(newPTauFilename, "ptau", 1, 11);
-    await utils.writePTauHeader(fdNew, curve, power);
+    await utils.writePTauHeader(fdNew, curve, power, ceremonyPower);
 
     await binFileUtils.copySection(fdOld, sections, fdNew, 2);
     await binFileUtils.copySection(fdOld, sections, fdNew, 3);
