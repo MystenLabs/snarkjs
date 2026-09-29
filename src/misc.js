@@ -101,8 +101,10 @@ export function fromPartialHash(partial) {
     (res.v6l = rest[12] | 0), (res.v6h = rest[13] | 0);
     (res.v7l = rest[14] | 0), (res.v7h = rest[15] | 0);
     const shift = 2 ** 32;
+    // `length` is stored as two words; `pos` fits in one, it is the offset
+    // inside the 128-byte block buffer.
     const len = rest[16] + rest[17] * shift;
-    const pos = rest[18] + rest[19] * shift;
+    const pos = rest[18];
     res.length = len + pos;
     res.pos = pos;
     return res;
@@ -121,8 +123,13 @@ export function toPartialHash(hash){
     (res32[10] = hash.v5l), (res32[11] = hash.v5h);
     (res32[12] = hash.v6l), (res32[13] = hash.v6h);
     (res32[14] = hash.v7l), (res32[15] = hash.v7h);
+    // `length` is the total byte count and can exceed 2^32 for a 2^28 accumulator,
+    // so store it as two 32-bit words. `pos` is the offset inside the 128-byte
+    // block buffer, so it always fits in one.
+    const len = hash.length - hash.pos;
+    res32[16] = len % 2 ** 32;
+    res32[17] = Math.floor(len / 2 ** 32);
     res32[18] = hash.pos;
-    res32[16] = hash.length-hash.pos;
     return res;
 }
 
