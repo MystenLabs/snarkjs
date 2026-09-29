@@ -121,12 +121,13 @@ export function toPartialHash(hash){
     (res32[10] = hash.v5l), (res32[11] = hash.v5h);
     (res32[12] = hash.v6l), (res32[13] = hash.v6h);
     (res32[14] = hash.v7l), (res32[15] = hash.v7h);
-    // Serialize length and pos as 64-bit values. Both can exceed 2^32 for
-    // large accumulators, so store the low and high 32-bit words.
+    // `length` is the total byte count and can exceed 2^32 for a 2^28 accumulator,
+    // so store it as two 32-bit words. `pos` is the offset inside the 128-byte
+    // block buffer, so it always fits in one.
     const len = hash.length - hash.pos;
     res32[16] = len % 2 ** 32;
     res32[17] = Math.floor(len / 2 ** 32);
-    res32[18] = hash.pos % 2 ** 32;
+    res32[18] = hash.pos;
     res32[19] = Math.floor(hash.pos / 2 ** 32);
     return res;
 }
