@@ -128,7 +128,6 @@ export function toPartialHash(hash){
     res32[16] = len % 2 ** 32;
     res32[17] = Math.floor(len / 2 ** 32);
     res32[18] = hash.pos;
-    res32[19] = Math.floor(hash.pos / 2 ** 32);
     return res;
 }
 
