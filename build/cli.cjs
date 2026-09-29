@@ -264,8 +264,10 @@ function fromPartialHash(partial) {
     (res.v6l = rest[12] | 0), (res.v6h = rest[13] | 0);
     (res.v7l = rest[14] | 0), (res.v7h = rest[15] | 0);
     const shift = 2 ** 32;
+    // `length` is stored as two words; `pos` fits in one, it is the offset
+    // inside the 128-byte block buffer.
     const len = rest[16] + rest[17] * shift;
-    const pos = rest[18] + rest[19] * shift;
+    const pos = rest[18];
     res.length = len + pos;
     res.pos = pos;
     return res;
