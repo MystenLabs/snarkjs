@@ -7906,7 +7906,14 @@ async function phase2verifyFromInit(initFileName, pTauFileName, zkeyFileName, lo
     try {
         return await verifyFromInitFiles(openFiles, initFileName, pTauFileName, zkeyFileName, logger);
     } finally {
-        for (const file of openFiles) await file.close();
+        // A close error must not replace the result or keep the other files open.
+        for (const file of openFiles) {
+            try {
+                await file.close();
+            } catch (err) {
+                if (logger) logger.warn(`verifyFromInit could not close a file: ${err.message}`);
+            }
+        }
     }
 }
 
