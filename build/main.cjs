@@ -5404,9 +5404,20 @@ const sameRatio = sameRatio$2;
 
 
 async function phase2verifyFromInit(initFileName, pTauFileName, zkeyFileName, logger) {
+    // The check opens three files. Close each of them, also after an early return or an error.
+    const openFiles = [];
+    try {
+        return await verifyFromInitFiles(openFiles, initFileName, pTauFileName, zkeyFileName, logger);
+    } finally {
+        for (const file of openFiles) await file.close();
+    }
+}
+
+async function verifyFromInitFiles(openFiles, initFileName, pTauFileName, zkeyFileName, logger) {
 
     let sr;
     const {fd, sections} = await binFileUtils__namespace.readBinFile(zkeyFileName, "zkey", 2);
+    openFiles.push(fd);
     const zkey = await readHeader$1(fd, sections, false);
     if (zkey.protocol != "groth16") {
         throw new Error("zkey file is not groth16");
@@ -5470,6 +5481,7 @@ async function phase2verifyFromInit(initFileName, pTauFileName, zkeyFileName, lo
 
 
     const {fd: fdInit, sections: sectionsInit} = await binFileUtils__namespace.readBinFile(initFileName, "zkey", 2);
+    openFiles.push(fdInit);
     const zkeyInit = await readHeader$1(fdInit, sectionsInit, false);
 
     if (zkeyInit.protocol != "groth16") {
@@ -5583,9 +5595,6 @@ async function phase2verifyFromInit(initFileName, pTauFileName, zkeyFileName, lo
 
     if (logger) logger.info(formatHash(mpcParams.csHash, "Circuit Hash: "));
 
-    await fd.close();
-    await fdInit.close();
-
     for (let i=mpcParams.contributions.length-1; i>=0; i--) {
         const c = mpcParams.contributions[i];
         if (logger) logger.info("-------------------------");
@@ -5646,6 +5655,7 @@ async function phase2verifyFromInit(initFileName, pTauFileName, zkeyFileName, lo
         const sG = G.F.n8*2;
 
         const {fd: fdPTau, sections: sectionsPTau} = await binFileUtils__namespace.readBinFile(pTauFileName, "ptau", 1);
+        openFiles.push(fdPTau);
 
         let buff_r = new ffjavascript.BigBuffer(zkey.domainSize * zkey.n8r);
 
