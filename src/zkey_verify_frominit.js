@@ -30,9 +30,27 @@ import { Scalar, ChaCha, BigBuffer } from "ffjavascript";
 
 
 export default async function phase2verifyFromInit(initFileName, pTauFileName, zkeyFileName, logger) {
+    // The check opens three files. Close each of them, also after an early return or an error.
+    const openFiles = [];
+    try {
+        return await verifyFromInitFiles(openFiles, initFileName, pTauFileName, zkeyFileName, logger);
+    } finally {
+        // A close error must not replace the result or keep the other files open.
+        for (const file of openFiles) {
+            try {
+                await file.close();
+            } catch (err) {
+                if (logger) logger.warn(`verifyFromInit could not close a file: ${err.message}`);
+            }
+        }
+    }
+}
+
+async function verifyFromInitFiles(openFiles, initFileName, pTauFileName, zkeyFileName, logger) {
 
     let sr;
     const {fd, sections} = await binFileUtils.readBinFile(zkeyFileName, "zkey", 2);
+    openFiles.push(fd);
     const zkey = await zkeyUtils.readHeader(fd, sections, false);
     if (zkey.protocol != "groth16") {
         throw new Error("zkey file is not groth16");
@@ -96,6 +114,7 @@ export default async function phase2verifyFromInit(initFileName, pTauFileName, z
 
 
     const {fd: fdInit, sections: sectionsInit} = await binFileUtils.readBinFile(initFileName, "zkey", 2);
+    openFiles.push(fdInit);
     const zkeyInit = await zkeyUtils.readHeader(fdInit, sectionsInit, false);
 
     if (zkeyInit.protocol != "groth16") {
@@ -209,9 +228,6 @@ export default async function phase2verifyFromInit(initFileName, pTauFileName, z
 
     if (logger) logger.info(misc.formatHash(mpcParams.csHash, "Circuit Hash: "));
 
-    await fd.close();
-    await fdInit.close();
-
     for (let i=mpcParams.contributions.length-1; i>=0; i--) {
         const c = mpcParams.contributions[i];
         if (logger) logger.info("-------------------------");
@@ -272,6 +288,7 @@ export default async function phase2verifyFromInit(initFileName, pTauFileName, z
         const sG = G.F.n8*2;
 
         const {fd: fdPTau, sections: sectionsPTau} = await binFileUtils.readBinFile(pTauFileName, "ptau", 1);
+        openFiles.push(fdPTau);
 
         let buff_r = new BigBuffer(zkey.domainSize * zkey.n8r);
 

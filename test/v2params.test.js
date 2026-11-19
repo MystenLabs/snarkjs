@@ -3,6 +3,8 @@ import { getCurveFromName } from "../src/curves.js";
 import { formatHash, hashIsEqual } from "../src/misc.js";
 import assert from "assert";
 import crypto from "crypto";
+import fs from "fs";
+import os from "os";
 import path from "path";
 
 describe("v2params split-contribute pipeline", function () {
@@ -162,6 +164,39 @@ describe("v2params split-contribute pipeline", function () {
         };
         assert(await snarkjs.zKey.verifyFromInit(zkey_0, ptau_final, beaconZkey, logger));
         assert(verificationMessages.includes(formatHash(hashes[0], "contribution #1 Final beacon:")));
+    });
+
+    it("verifyFromInit closes each file that it opens", async () => {
+        const zkey_1 = {type: "mem"};
+        await snarkjs.zKey.contribute(zkey_0, zkey_1, "C1", "Entropy1");
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), "snarkjs-verify-"));
+        const init = path.join(dir, "init.zkey");
+        const ptau = path.join(dir, "final.ptau");
+        const zkey = path.join(dir, "contributed.zkey");
+        fs.writeFileSync(init, zkey_0.data);
+        fs.writeFileSync(ptau, ptau_final.data);
+        fs.writeFileSync(zkey, zkey_1.data);
+
+        // Count the file handles that are open.
+        const open = fs.promises.open;
+        let openHandles = 0;
+        fs.promises.open = async (...args) => {
+            const handle = await open(...args);
+            openHandles++;
+            const close = handle.close.bind(handle);
+            handle.close = async () => { openHandles--; return close(); };
+            return handle;
+        };
+        try {
+            assert.equal(await snarkjs.zKey.verifyFromInit(init, ptau, zkey), true);
+            assert.equal(openHandles, 0, "a good verification left a file open");
+            // The two keys in the wrong order do not verify. This path returns early.
+            assert.equal(await snarkjs.zKey.verifyFromInit(zkey, ptau, init), false);
+            assert.equal(openHandles, 0, "a failed verification left a file open");
+        } finally {
+            fs.promises.open = open;
+            fs.rmSync(dir, {recursive: true, force: true});
+        }
     });
 
     it("v2paramsExtends checks exactly-one contribution prefix extension", async () => {
