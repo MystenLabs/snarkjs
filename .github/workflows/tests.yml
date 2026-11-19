@@ -93,6 +93,11 @@ jobs:
         working-directory: browser_tests
         run: npm ci
 
+      # npm 11 does not run the install script of puppeteer, which downloads Chrome.
+      - name: Install Chrome for puppeteer
+        working-directory: browser_tests
+        run: npx puppeteer browsers install chrome
+
       - name: Run browser tests
         working-directory: browser_tests
         run: npm test
