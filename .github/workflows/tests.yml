@@ -76,7 +76,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        node-version: [lts/*]
+        # puppeteer 23 installs an incomplete Chrome on Node.js 26. The test runs
+        # snarkjs in Chrome; Node.js only starts it.
+        node-version: [lts/-1]
 
     steps:
       - name: Checkout project
